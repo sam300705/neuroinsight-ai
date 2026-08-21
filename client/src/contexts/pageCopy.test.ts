@@ -10,9 +10,14 @@ describe("dashboard bilingual page copy", () => {
       expect(copy.results.title).not.toHaveLength(0);
       expect(copy.history.title).not.toHaveLength(0);
       expect(copy.methodology.title).not.toHaveLength(0);
+      expect(copy.methodology.steps).toHaveLength(4);
+      expect(copy.methodology.cards).toHaveLength(3);
       expect(copy.performance.title).not.toHaveLength(0);
+      expect(copy.performance.cards).toHaveLength(2);
       expect(copy.limitations.title).not.toHaveLength(0);
+      expect(copy.limitations.items).toHaveLength(7);
       expect(copy.about.title).not.toHaveLength(0);
+      expect(copy.about.cards).toHaveLength(3);
       expect(copy.notFound.title).not.toHaveLength(0);
     }
   });
