@@ -9,7 +9,7 @@
 | Typed application | `pnpm check` | **Passed** with no TypeScript errors. |
 | Node procedures | `pnpm test` | **5 passed**. Covers auth logout plus scan-result/artifact/delete-confirmation validation. |
 | Production bundle | `pnpm build` | **Passed**. The bundle emits a size warning because the optional 3D renderer increases the main JavaScript chunk to approximately 1.36 MB; this is a performance follow-up, not a build failure. |
-| Visual review | Desktop screenshots of overview, results, and history; mobile screenshot of analysis upload | Confirmed readable global disclaimer, responsive navigation, scoped upload guidance, private history empty state, and research-safe no-analysis result state. |
+| Visual review | Desktop screenshots of overview, analysis, results, and history; mobile screenshot of analysis upload | Confirmed readable global disclaimer, responsive navigation, scoped upload guidance, private history empty state, and research-safe no-analysis result state. |
 
 ## Actual model-development evidence
 
