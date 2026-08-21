@@ -20,3 +20,7 @@ Every later experiment must record the dataset version, manifest checksum, patie
 Neither `EXP-001` nor `EXP-002` is selected for application inference. Both experiments were intentionally small, head-only, one-epoch smoke runs whose purpose was to validate the data-to-metrics pipeline and provide an honest architecture comparison. ResNet50 had the higher macro F1, whereas EfficientNetB0 had the higher accuracy but a severely low meningioma recall (0.025). Because their split is not patient-level and their configuration was not tuned, neither result supports a deployment decision.
 
 `EXP-003` also remains non-deployable. It confirms that the NIfTI-to-mask pipeline, whole-tumor loss, case-level separation, and Dice evaluation are functional on a small selected-slice subset. Its final metric is not a full-volume result, not a comparison with a held-out labelled test cohort, and not evidence that the architecture should be surfaced in the application.
+
+## Calibration status
+
+No calibration method, calibration split, reliability analysis, expected calibration error, Brier score, or abstention threshold was calculated for the classification experiments. The segmentation smoke experiment likewise has no uncertainty calibration or full-volume threshold study. These omissions are recorded explicitly in `docs/CALIBRATION_STATUS.md`, and they are the reason neither checkpoint produces an application confidence score.

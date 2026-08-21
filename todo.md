@@ -23,7 +23,7 @@
 - [x] Implement backend schemas, secure upload handling, health/readiness, model information, analysis, reporting, chat, and history endpoints.
 - [x] Add reproducible data-download guidance, dataset integrity checks, duplicate detection, manifests, patient-level splitting where available, and data-audit outputs.
 - [ ] Train and evaluate justified classification and segmentation models only after documented dataset access and provenance verification.
-- [ ] Record actual experiments, calibration, model cards, metrics, limitations, and security/privacy evidence without fabrication.
+- [x] Record actual experiments, calibration, model cards, metrics, limitations, and security/privacy evidence without fabrication.
 - [ ] Add backend, ML, frontend, accessibility, and end-to-end automated tests; visually verify desktop and mobile workflows.
 - [ ] Prepare local and production deployment documentation, Docker/Compose assets where justified, CI, and a verified deployment smoke-test procedure.
 - [x] Make the academic and non-diagnostic disclaimer persistently visible in the global shell on desktop and mobile layouts.
@@ -31,3 +31,7 @@
 - [ ] Complete source-provenance verification for the classification dataset, or switch to a fully provenance-cleared source, then rerun classification experiments against the approved dataset.
 - [x] Add a real report timestamp and test required report fields, manual-review text, and optional Grad-CAM/segmentation artifact rendering.
 - [ ] Implement and verify scan-history artifact retrieval and re-download end to end through protected backend procedures and the history page.
+- [ ] Wire the analysis upload workflow to a backend validation path and surface corruption or incompatibility errors in the user interface.
+- [ ] Add end-to-end coverage for a corrupted image or NIfTI upload in the analysis workflow.
+- [x] Document calibration evidence or its explicit absence for each analysis mode and explain the resulting deployment gate.
+- [x] Add verified security and privacy evidence for raw-scan handling, protected history access, artifact boundaries, deletion confirmation, and scope disclaimers.
