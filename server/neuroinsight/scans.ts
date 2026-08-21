@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { scanArtifacts, scanRecords } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { storagePut } from "../storage";
@@ -11,7 +11,9 @@ export const scansRouter = router({
     const db = await getDb();
     if (!db) return [];
     const records = await db.select().from(scanRecords).where(eq(scanRecords.userId, ctx.user.id)).orderBy(desc(scanRecords.createdAt));
-    const artifacts = records.length ? await db.select().from(scanArtifacts) : [];
+    const artifacts = records.length
+      ? await db.select().from(scanArtifacts).where(inArray(scanArtifacts.scanRecordId, records.map(record => record.id)))
+      : [];
     return records.map(record => ({ ...record, confidenceScore: record.confidenceScore === null ? null : Number(record.confidenceScore), calibrated: Boolean(record.calibrated), manualReviewRecommended: Boolean(record.manualReviewRecommended), measurement: JSON.parse(record.measurementJson), warnings: JSON.parse(record.warningsJson), artifacts: artifacts.filter(artifact => artifact.scanRecordId === record.id) }));
   }),
 
@@ -33,6 +35,19 @@ export const scansRouter = router({
     return stored;
   }),
 
+  getArtifactDownload: protectedProcedure.input(z.object({ artifactId: z.number().int().positive() })).query(async ({ ctx, input }) => {
+    const db = await getDb();
+    if (!db) throw new Error("Scan history database is unavailable.");
+    const [artifact] = await db
+      .select({ id: scanArtifacts.id, storageUrl: scanArtifacts.storageUrl, artifactType: scanArtifacts.artifactType })
+      .from(scanArtifacts)
+      .innerJoin(scanRecords, eq(scanArtifacts.scanRecordId, scanRecords.id))
+      .where(and(eq(scanArtifacts.id, input.artifactId), eq(scanRecords.userId, ctx.user.id)))
+      .limit(1);
+    if (!artifact) throw new Error("Artifact was not found for this user.");
+    return artifact;
+  }),
+
   deleteOne: protectedProcedure.input(z.object({ scanId: z.string().uuid() })).mutation(async ({ ctx, input }) => {
     const db = await getDb(); if (!db) throw new Error("Scan history database is unavailable.");
     const [record] = await db.select().from(scanRecords).where(and(eq(scanRecords.userId, ctx.user.id), eq(scanRecords.scanId, input.scanId))).limit(1);
@@ -50,4 +65,3 @@ export const scansRouter = router({
     return { deletedCount: records.length };
   }),
 });
-

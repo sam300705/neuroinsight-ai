@@ -29,6 +29,19 @@ def test_health_and_model_info_are_honest_about_model_state():
     assert all(item["status"] == "unavailable" for item in client.get("/api/v1/model-info").json())
 
 
+def test_validation_service_allows_only_configured_dashboard_origins():
+    response = client.options(
+        "/api/v1/analyze",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+    assert "POST" in response.headers["access-control-allow-methods"]
+
+
 def test_classify_validates_input_but_does_not_fabricate_prediction():
     response = client.post(
         "/api/v1/classify",

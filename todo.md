@@ -4,20 +4,20 @@
 - [x] Create a multi-page responsive navigation experience for landing, analyse, results, scan history, methodology, model performance, limitations, and about pages.
 - [x] Build a clearly labelled Mode A 2D PNG/JPEG four-class classification workflow for glioma, meningioma, pituitary tumor, and no tumor.
 - [x] Build a clearly labelled Mode B glioma-focused volumetric NIfTI segmentation workflow with supported-scope guidance.
-- [ ] Implement drag-and-drop upload with extension, MIME type, size, and corrupted-file validation plus compatible error states.
-- [ ] Implement input-quality checks and manual-review warnings for low-quality, incompatible, or out-of-distribution inputs.
+- [x] Implement drag-and-drop upload with extension, MIME type, size, and corrupted-file validation plus compatible error states.
+- [x] Implement input-quality checks and manual-review warnings for low-quality, incompatible, or out-of-distribution inputs.
 - [ ] Display the predicted class and explicitly label model confidence as a non-medical model confidence score.
 - [ ] Implement calibration and uncertainty status with a validation-derived abstention threshold and manual-review warning state.
-- [ ] Generate real classifier Grad-CAM artifacts with an opacity slider, colour legend, and persistent coarse-attribution disclaimer.
-- [ ] Render segmentation masks in a 2D slice overlay with the persistent glioma-focused scope disclaimer.
-- [ ] Calculate segmentation area only with valid spacing metadata and otherwise return pixel count and image-occupancy percentage.
-- [ ] Calculate volume only from compatible volumetric metadata and multiple compatible slices.
+- [x] Generate real classifier Grad-CAM artifacts with an opacity slider, colour legend, and persistent coarse-attribution disclaimer.
+- [x] Render segmentation masks in a 2D slice overlay with the persistent glioma-focused scope disclaimer.
+- [x] Calculate segmentation area only with valid spacing metadata and otherwise return pixel count and image-occupancy percentage.
+- [x] Calculate volume only from compatible volumetric metadata and multiple compatible slices.
 - [x] Generate academic-use PDF reports containing required identifiers, outputs, limitations, and expert-review recommendation.
 - [x] Provide an English/Hindi safe contextual chatbot with minimal structured context, treatment refusal, prompt-injection resistance, and an offline FAQ fallback.
-- [ ] Persist anonymized scan-history metadata and derived artifacts without retaining raw scans by default.
-- [ ] Add history search, predicted-class filters, reopen-result support, individual deletion, retention controls, and a confirmed delete-all flow.
-- [ ] Store PDF reports, Grad-CAM overlays, and segmentation artifacts using S3-compatible storage for history re-download.
-- [ ] Add interactive 3D visualization only for compatible segmented volumes, including rotate, zoom, reset, opacity, highlight, loading/error states, and an algorithmic-geometry disclaimer.
+- [x] Persist anonymized scan-history metadata and derived artifacts without retaining raw scans by default.
+- [x] Add history search, predicted-class filters, reopen-result support, individual deletion, retention controls, and a confirmed delete-all flow.
+- [ ] Store PDF reports, Grad-CAM overlays, and segmentation artifacts using S3-compatible storage for history re-download. (Protected registration/retrieval is implemented; real inference-to-registration activation remains a safety-gated integration.)
+- [x] Add interactive 3D visualization only for compatible segmented volumes, including rotate, zoom, reset, opacity, highlight, loading/error states, and an algorithmic-geometry disclaimer.
 - [ ] Provide complete English/Hindi language switching across all pages and chatbot responses.
 - [ ] Implement accessible keyboard navigation, labelled controls, focus states, contrast, and colour-independent warning communication.
 - [x] Implement backend schemas, secure upload handling, health/readiness, model information, analysis, reporting, chat, and history endpoints.
@@ -25,13 +25,13 @@
 - [ ] Train and evaluate justified classification and segmentation models only after documented dataset access and provenance verification.
 - [x] Record actual experiments, calibration, model cards, metrics, limitations, and security/privacy evidence without fabrication.
 - [ ] Add backend, ML, frontend, accessibility, and end-to-end automated tests; visually verify desktop and mobile workflows.
-- [ ] Prepare local and production deployment documentation, Docker/Compose assets where justified, CI, and a verified deployment smoke-test procedure.
+- [ ] Prepare local and production deployment documentation, Docker/Compose assets where justified, CI, and a verified deployment smoke-test procedure. (Assets and procedure are present; package-install and container-path verification is in progress.)
 - [x] Make the academic and non-diagnostic disclaimer persistently visible in the global shell on desktop and mobile layouts.
 - [x] Connect the chatbot to current analysis context and add explicit English/Hindi refusals for prompt injection, hidden prompts, diagnosis, and treatment requests.
 - [ ] Complete source-provenance verification for the classification dataset, or switch to a fully provenance-cleared source, then rerun classification experiments against the approved dataset.
 - [x] Add a real report timestamp and test required report fields, manual-review text, and optional Grad-CAM/segmentation artifact rendering.
 - [ ] Implement and verify scan-history artifact retrieval and re-download end to end through protected backend procedures and the history page.
-- [ ] Wire the analysis upload workflow to a backend validation path and surface corruption or incompatibility errors in the user interface.
+- [ ] Wire the analysis upload workflow to a backend validation path and surface corruption or incompatibility errors in the user interface. (Client integration and response-mapping unit tests pass; browser-level validation remains pending.)
 - [ ] Add end-to-end coverage for a corrupted image or NIfTI upload in the analysis workflow.
 - [x] Document calibration evidence or its explicit absence for each analysis mode and explain the resulting deployment gate.
 - [x] Add verified security and privacy evidence for raw-scan handling, protected history access, artifact boundaries, deletion confirmation, and scope disclaimers.

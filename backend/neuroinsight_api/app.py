@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import time
 import uuid
+import os
 from base64 import b64decode
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from .constants import ACADEMIC_DISCLAIMER, GLIOMA_SCOPE_DISCLAIMER, MODEL_UNAVAILABLE_MESSAGE
@@ -26,6 +28,19 @@ app = FastAPI(
     version="0.1.0",
     description="Academic-use prototype API. It is not a medical diagnostic service.",
     lifespan=lifespan,
+)
+
+allowed_origins = [
+    origin.strip()
+    for origin in os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
+    if origin.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=False,
+    allow_methods=["POST", "GET", "OPTIONS"],
+    allow_headers=["Content-Type", "X-Request-ID"],
 )
 
 

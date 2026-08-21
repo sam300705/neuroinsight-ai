@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
 export type Language = "en" | "hi";
 
@@ -12,9 +12,9 @@ const LanguageContext = createContext<LanguageContextValue | null>(null);
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const [language, setLanguage] = useState<Language>(() => localStorage.getItem("neuroinsight-language") === "hi" ? "hi" : "en");
+  useEffect(() => { document.documentElement.lang = language === "hi" ? "hi" : "en"; }, [language]);
   const value = useMemo(() => ({ language, setLanguage: (next: Language) => { localStorage.setItem("neuroinsight-language", next); setLanguage(next); }, t: (key: keyof (typeof copy)["en"]) => copy[language][key] }), [language]);
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
 }
 
 export function useLanguage() { const value = useContext(LanguageContext); if (!value) throw new Error("useLanguage must be used within LanguageProvider"); return value; }
-
