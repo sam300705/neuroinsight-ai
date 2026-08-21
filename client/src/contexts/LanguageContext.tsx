@@ -3,8 +3,8 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 export type Language = "en" | "hi";
 
 const copy = {
-  en: { navigation: "Navigation", analyze: "Analyse scan", results: "Results", history: "Scan history", methodology: "Methodology", performance: "Model performance", limitations: "Limitations", about: "About project", academic: "Academic and research use only — not a medical diagnosis.", language: "हिंदी", home: "Overview" },
-  hi: { navigation: "नेविगेशन", analyze: "स्कैन विश्लेषण", results: "परिणाम", history: "स्कैन इतिहास", methodology: "कार्यप्रणाली", performance: "मॉडल प्रदर्शन", limitations: "सीमाएँ", about: "परियोजना के बारे में", academic: "केवल शैक्षणिक और शोध उपयोग के लिए — यह चिकित्सीय निदान नहीं है।", language: "English", home: "अवलोकन" },
+  en: { navigation: "Navigation", analyze: "Analyse scan", results: "Results", history: "Scan history", methodology: "Methodology", performance: "Model performance", limitations: "Limitations", about: "About project", academic: "Academic and research use only — not a medical diagnosis.", language: "हिंदी", home: "Overview", skip: "Skip to main content", toggleNavigation: "Toggle navigation", switchLanguage: "Switch language to Hindi" },
+  hi: { navigation: "नेविगेशन", analyze: "स्कैन विश्लेषण", results: "परिणाम", history: "स्कैन इतिहास", methodology: "कार्यप्रणाली", performance: "मॉडल प्रदर्शन", limitations: "सीमाएँ", about: "परियोजना के बारे में", academic: "केवल शैक्षणिक और शोध उपयोग के लिए — यह चिकित्सीय निदान नहीं है।", language: "English", home: "अवलोकन", skip: "मुख्य सामग्री पर जाएँ", toggleNavigation: "नेविगेशन बदलें", switchLanguage: "भाषा को अंग्रेज़ी में बदलें" },
 } as const;
 
 type LanguageContextValue = { language: Language; setLanguage: (language: Language) => void; t: (key: keyof (typeof copy)["en"]) => string };
