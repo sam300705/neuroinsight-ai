@@ -1,0 +1,16 @@
+{
+  "classification": {
+    "status": "not_trained",
+    "supportedFormats": ["image/png", "image/jpeg"],
+    "labels": ["glioma", "meningioma", "pituitary", "no_tumor"],
+    "confidenceLanguage": "model confidence score",
+    "calibration": "not_evaluated"
+  },
+  "segmentation": {
+    "status": "not_trained",
+    "supportedFormats": ["application/x-nifti", "application/gzip"],
+    "scope": "glioma-focused compatible volumetric inputs",
+    "calibration": "not_applicable"
+  }
+}
+

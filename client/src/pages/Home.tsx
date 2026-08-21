@@ -1,33 +1,6 @@
-import { useAuth } from "@/_core/hooks/useAuth";
-import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
-import { Streamdown } from 'streamdown';
+import { ArrowRight, BrainCircuit, ChartNoAxesCombined, FileCheck2, Layers3, ShieldAlert } from "lucide-react";
+import { Link } from "wouter";
+import { AcademicDisclaimer } from "@/components/ResearchDisclaimers";
+const features = [["Two scoped modes", "2D four-class image classification and glioma-focused NIfTI segmentation remain separated by design.", Layers3], ["Explainable evidence", "A trained classifier can supply Grad-CAM attribution; a segmentation model supplies a distinct mask.", BrainCircuit], ["Honest uncertainty", "Low confidence, incompatible inputs, and absent models produce a manual-review state, not a reassuring result.", ShieldAlert], ["Reproducible records", "Anonymized scan history will retain derived artifacts and references, without storing raw scans by default.", FileCheck2]];
+export default function Home() { return <div className="mx-auto max-w-6xl space-y-7"><section className="overflow-hidden rounded-3xl bg-[radial-gradient(circle_at_top_right,_#d9f2ef,_transparent_34%),linear-gradient(135deg,_#0c3b3a,_#0f5953)] px-6 py-10 text-white shadow-xl sm:px-10 sm:py-14"><p className="text-xs font-semibold uppercase tracking-[0.18em] text-teal-200">Brain MRI analysis · research prototype</p><h1 className="mt-4 max-w-3xl text-4xl font-semibold tracking-tight sm:text-5xl">Evidence-aware AI assistance with visible boundaries.</h1><p className="mt-5 max-w-2xl text-base leading-7 text-teal-50">A calm, multi-mode workspace for academic MRI research that keeps classification, segmentation, uncertainty, explanation, and measurement scope explicit at every step.</p><div className="mt-8 flex flex-wrap gap-3"><Link href="/analyse" className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-teal-950 shadow-sm transition hover:bg-teal-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-white">Begin an analysis <ArrowRight className="size-4" /></Link><Link href="/methodology" className="inline-flex items-center gap-2 rounded-xl border border-teal-300/50 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white">Review methodology</Link></div></section><AcademicDisclaimer /><section className="grid gap-4 sm:grid-cols-2">{features.map(([title, detail, Icon]) => <article key={title as string} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><span className="grid size-10 place-items-center rounded-xl bg-teal-50 text-teal-800"><Icon className="size-5" /></span><h2 className="mt-4 text-lg font-semibold">{title as string}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{detail as string}</p></article>)}</section><section className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:grid-cols-[1fr_auto]"><div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-teal-700">Current model status</p><h2 className="mt-2 text-xl font-semibold">No verified model artifact is installed yet.</h2><p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">The dashboard, input validation, safety copy, offline FAQ, and FastAPI contracts are being built without substituting imagined predictions or performance. The performance page will update only from real experiment outputs.</p></div><Link href="/performance" className="inline-flex h-fit items-center gap-2 self-end rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-teal-300 hover:bg-teal-50">View evidence plan <ChartNoAxesCombined className="size-4" /></Link></section></div>; }
 
-/**
- * All content in this page are only for example, replace with your own feature implementation
- * When building pages, remember your instructions in Frontend Workflow, Frontend Best Practices, Design Guide and Common Pitfalls
- */
-export default function Home() {
-  // The useAuth hook provides authentication state.
-  // To implement login/logout, call logout(), or start login from an event
-  // handler: onClick={() => startLogin()} (imported from "@/const"). Never call
-  // startLogin() during render (no href={startLogin()}) — it mints a one-time
-  // nonce cookie and must run only at the moment of navigation.
-  let { user, loading, error, isAuthenticated, logout } = useAuth();
-
-  // If theme is switchable in App.tsx, we can implement theme toggling like this:
-  // const { theme, toggleTheme } = useTheme();
-
-  return (
-    <div className="min-h-screen flex flex-col">
-      <main>
-        {/* Example: lucide-react for icons */}
-        <Loader2 className="animate-spin" />
-        Example Page
-        {/* Example: Streamdown for markdown rendering */}
-        <Streamdown>Any **markdown** content</Streamdown>
-        <Button variant="default">Example Button</Button>
-      </main>
-    </div>
-  );
-}

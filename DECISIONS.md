@@ -41,3 +41,15 @@
 **Decision:** Do not download a raw dataset until its licence, provenance, format, and intended role are documented.  
 **Rationale:** The supplied instructions explicitly prohibit silent acceptance of data terms and use of unclear sources.  
 **Status:** Accepted.
+
+## D-008 — Split dashboard and inference-service responsibilities
+
+**Decision:** Use the managed React/tRPC application for the dashboard, history, storage references, and safe fallback interactions, while maintaining a separately runnable FastAPI service in `backend/` for Python imaging and model work.  
+**Rationale:** The generated application scaffold provides secure storage and a durable user interface, whereas NIfTI/DICOM processing and trained PyTorch models require a Python-capable service with independently documented resource limits.  
+**Status:** Accepted.
+
+## D-009 — No simulated inference
+
+**Decision:** Until verified training artifacts are available, the interface and API will return explicit model-unavailable states rather than prefilled predictions, masks, heatmaps, or metrics.  
+**Rationale:** The project prohibits fabricated predictions, Grad-CAM, segmentation, metrics, and test outcomes.  
+**Status:** Accepted.
