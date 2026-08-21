@@ -9,11 +9,10 @@
 | Typed application | `pnpm check` | **Passed** with no TypeScript errors. |
 | Node procedures | `pnpm test` | **5 passed**. Covers auth logout plus scan-result/artifact/delete-confirmation validation. |
 | Production bundle | `pnpm build` | **Passed**. The bundle emits a size warning because the optional 3D renderer increases the main JavaScript chunk to approximately 1.36 MB; this is a performance follow-up, not a build failure. |
-| Visual review | Desktop screenshots of overview and history; mobile screenshot during prior dashboard verification | Confirmed readable global disclaimer, responsive navigation, and private history empty state. |
+| Visual review | Desktop screenshots of overview, results, and history; mobile screenshot of analysis upload | Confirmed readable global disclaimer, responsive navigation, scoped upload guidance, private history empty state, and research-safe no-analysis result state. |
 
 ## Actual model-development evidence
 
 The classification smoke runs used a dataset with unresolved source-provenance limitations and a non-patient-level hash-grouped development split; neither classifier is exposed to the application. The segmentation smoke run used a public Task01 NIfTI source with a case-level development split, but it remains a selected-slice, small 2D experiment. Its 0.6759 mean validation slice Dice is not a full-volume, hidden-test, or clinical result. The saved Grad-CAM image is a real attribution derived from the exploratory ResNet50 checkpoint, and it remains a coarse classifier-attribution artifact rather than a tumor boundary.
 
 > **Release gate:** the app intentionally returns an unavailable analysis state until a provenance-approved, calibrated, held-out validated model artifact is installed and separately evaluated for its intended research scope.
-

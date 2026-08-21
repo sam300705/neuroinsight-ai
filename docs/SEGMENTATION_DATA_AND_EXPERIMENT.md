@@ -32,8 +32,11 @@ The experiment used four randomly seeded, **case-disjoint** training volumes and
 
 The result demonstrates a functioning, reproducible case-level NIfTI segmentation path. A candidate for user-facing research inference would still require broader training, full 3D architecture/validation, a selected stopping rule, calibration of uncertainty behavior, complete full-volume evaluation, and an untouched labelled external cohort.
 
+## Exploratory artifact-generation check
+
+The saved `TinyUNet2D` checkpoint was then run slice-wise on Task01 case `BRATS_450` to verify artifact generation. It created an actual NIfTI whole-tumor mask and a 240×240 red-overlay PNG. The mask contained **80,027 voxels**. Because this source volume records 1 mm³ spacing, the utility emitted a voxel-derived value of **80.027 mL**. The image was visually checked and remains an exploratory artifact; it is not displayed by the deployed dashboard and must not be treated as a clinical volume estimate.
+
 ## References
 
 [1]: https://registry.opendata.aws/msd/ "Medical Segmentation Decathlon — Registry of Open Data on AWS"
 [2]: https://www.nature.com/articles/s41467-022-30695-9 "The Medical Segmentation Decathlon"
-
