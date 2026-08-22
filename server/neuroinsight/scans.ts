@@ -29,10 +29,12 @@ export const scansRouter = router({
     if (!db) throw new Error("Scan history database is unavailable.");
     const [record] = await db.select().from(scanRecords).where(and(eq(scanRecords.userId, ctx.user.id), eq(scanRecords.scanId, input.scanId))).limit(1);
     if (!record) throw new Error("Scan record was not found for this user.");
+    const [existing] = await db.select().from(scanArtifacts).where(and(eq(scanArtifacts.scanRecordId, record.id), eq(scanArtifacts.artifactType, input.artifactType))).limit(1);
+    if (existing) return { key: existing.storageKey, url: existing.storageUrl, contentType: existing.contentType, existing: true };
     const bytes = validateArtifactPayload(input.base64, input.contentType);
     const stored = await storagePut(`neuroinsight/${ctx.user.id}/${input.scanId}/${input.artifactType}-${input.fileName}`, bytes, input.contentType);
     await db.insert(scanArtifacts).values({ scanRecordId: record.id, artifactType: input.artifactType, storageKey: stored.key, storageUrl: stored.url, contentType: input.contentType });
-    return stored;
+    return { ...stored, existing: false };
   }),
 
   getArtifactDownload: protectedProcedure.input(z.object({ artifactId: z.number().int().positive() })).query(async ({ ctx, input }) => {

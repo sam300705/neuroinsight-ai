@@ -16,7 +16,7 @@
 - [x] Provide an English/Hindi safe contextual chatbot with minimal structured context, treatment refusal, prompt-injection resistance, and an offline FAQ fallback.
 - [x] Persist anonymized scan-history metadata and derived artifacts without retaining raw scans by default.
 - [x] Add history search, predicted-class filters, reopen-result support, individual deletion, retention controls, and a confirmed delete-all flow.
-- [ ] Store PDF reports, Grad-CAM overlays, and segmentation artifacts using S3-compatible storage for history re-download. (Protected registration/retrieval is implemented; real inference-to-registration activation remains a safety-gated integration.)
+- [ ] Store PDF reports, Grad-CAM overlays, and segmentation artifacts using S3-compatible storage for history re-download. (Protected registration/retrieval is implemented. Mode A now wires an authoritative response to metadata save, server-generated PDF, and real Grad-CAM registration with no raw-upload storage; authenticated end-to-end history/re-download verification remains pending. Mode B is unavailable.)
 - [x] Add interactive 3D visualization only for compatible segmented volumes, including rotate, zoom, reset, opacity, highlight, loading/error states, and an algorithmic-geometry disclaimer.
 - [ ] Provide complete English/Hindi language switching across all pages and chatbot responses.
 - [ ] Implement accessible keyboard navigation, labelled controls, focus states, contrast, and colour-independent warning communication.
@@ -31,7 +31,7 @@
 - [ ] Complete source-provenance verification for the classification dataset, or switch to a fully provenance-cleared source, then rerun classification experiments against the approved dataset.
 - [x] Add a real report timestamp and test required report fields, manual-review text, and optional Grad-CAM/segmentation artifact rendering.
 - [ ] Implement and verify scan-history artifact retrieval and re-download end to end through protected backend procedures and the history page.
-- [ ] Wire the analysis upload workflow to a backend validation path and surface corruption or incompatibility errors in the user interface. (Client integration and response-mapping unit tests pass; browser-level validation remains pending.)
+- [ ] Wire the analysis upload workflow to a backend validation path and surface corruption or incompatibility errors in the user interface. (Client integration and response-mapping unit tests pass. The native input is now browser-targetable rather than screen-reader-only; a real browser upload remains pending.)
 - [ ] Add end-to-end coverage for a corrupted image or NIfTI upload in the analysis workflow.
 - [x] Document calibration evidence or its explicit absence for each analysis mode and explain the resulting deployment gate.
 - [x] Add verified security and privacy evidence for raw-scan handling, protected history access, artifact boundaries, deletion confirmation, and scope disclaimers.
