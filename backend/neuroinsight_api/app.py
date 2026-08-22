@@ -5,22 +5,31 @@ import uuid
 import os
 from base64 import b64decode
 from contextlib import asynccontextmanager
+from typing import Protocol
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from .constants import ACADEMIC_DISCLAIMER, GLIOMA_SCOPE_DISCLAIMER, MODEL_UNAVAILABLE_MESSAGE
-from .classifier_runtime import ExperimentalClassifier, configured_classifier
 from .offline_faq import answer_offline
 from .schemas import AnalysisMode, AnalysisResponse, ChatRequest, ChatResponse, Measurement, ModelInfo, ReportRequest
 from .reporting import build_report
 from .upload_validation import UploadValidationError, validate_upload
 
 
+class ClassifierProtocol(Protocol):
+    def predict(self, payload: bytes): ...
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    app.state.classifier = configured_classifier()
+    if os.getenv("USE_ONNX_CLASSIFIER", "false").lower() == "true":
+        from .onnx_classifier_runtime import configured_onnx_classifier
+        app.state.classifier = configured_onnx_classifier()
+    else:
+        from .classifier_runtime import configured_classifier
+        app.state.classifier = configured_classifier()
     yield
 
 
@@ -77,7 +86,7 @@ def _unavailable_result(request: Request, mode: AnalysisMode, started_at: float)
     )
 
 
-def _classification_result(request: Request, classifier: ExperimentalClassifier, payload: bytes, started_at: float) -> AnalysisResponse:
+def _classification_result(request: Request, classifier: ClassifierProtocol, payload: bytes, started_at: float) -> AnalysisResponse:
     prediction = classifier.predict(payload)
     return AnalysisResponse(
         request_id=request.headers.get("x-request-id", "unknown"),
