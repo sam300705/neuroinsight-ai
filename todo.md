@@ -40,5 +40,6 @@
 - [x] Train, calibrate where justified, and evaluate real reproducible experimental models using the approved source(s), without fabricating clinical validation.
 - [ ] Connect real local model inference to predictions, model-confidence labels, Grad-CAM, segmentation, measurements, reports, artifact registration, and protected history retrieval.
 - [ ] Run local end-to-end checks using non-sensitive demonstration files, including corrupt-upload rejection and real derived-artifact retrieval. (Corrupt rejection, real inference, Grad-CAM, and PDF generation are verified; persisted protected history retrieval remains pending.)
-- [ ] Prepare an HTTPS deployment of the FastAPI validation service, verify health/readiness, and set only exact dashboard and localhost CORS origins after the dashboard URL is known.
+- [x] Prepare an HTTPS deployment of the FastAPI validation service, verify health/readiness, and set only exact dashboard and localhost CORS origins after the dashboard URL is known. (Vercel ONNX Runtime deployment passed HTTPS health/readiness, CORS preflight, corrupt-upload rejection, and one real public fixed-split image inference check; dashboard now uses its durable HTTPS origin.)
 - [ ] Create a publish-ready dashboard checkpoint and provide the user with the required project-interface publication handover; do not represent publishing as clinical validation.
+- [ ] After dashboard publication, add its final public HTTPS origin to the backend CORS allowlist and re-verify preflight without broadening allowed origins.

@@ -1,7 +1,9 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import type { AnalysisMode } from "@shared/neuroinsight";
+import type { InferenceAnalysisResponse } from "@/lib/inferenceApi";
 
-export type ClientAnalysisState = { scanId: string; mode: AnalysisMode; fileName: string; fileSize: number; previewUrl?: string; status: "idle" | "validating" | "ready" | "low_confidence" | "unavailable" | "incompatible"; messages: string[]; createdAt: string; modelVersion?: string; predictedClass?: "glioma" | "meningioma" | "pituitary" | "no_tumor" | null; modelConfidenceScore?: number | null; calibrated?: boolean; uncertaintyReason?: string | null; gradCamDataUrl?: string | null };
+/** The persisted browser state contains response metadata and derived Grad-CAM only; it never contains the original MRI bytes. */
+export type ClientAnalysisState = { scanId: string; mode: AnalysisMode; fileName: string; fileSize: number; previewUrl?: string; status: "idle" | "validating" | "ready" | "low_confidence" | "unavailable" | "incompatible"; messages: string[]; createdAt: string; modelVersion?: string; predictedClass?: "glioma" | "meningioma" | "pituitary" | "no_tumor" | null; modelConfidenceScore?: number | null; calibrated?: boolean; uncertaintyReason?: string | null; gradCamDataUrl?: string | null; serverResponse?: InferenceAnalysisResponse };
 type AnalysisContextValue = { current: ClientAnalysisState | null; setCurrent: (analysis: ClientAnalysisState | null) => void };
 const AnalysisContext = createContext<AnalysisContextValue | null>(null);
 

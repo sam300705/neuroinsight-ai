@@ -51,4 +51,7 @@ def build_report(analysis: AnalysisResponse, grad_cam_png: bytes | None = None, 
         pdf.set_font("Helvetica", "", 9); pdf.multi_cell(0, 6, GLIOMA_SCOPE_DISCLAIMER)
         with NamedTemporaryFile(suffix=".png") as temp:
             temp.write(segmentation_png); temp.flush(); pdf.image(temp.name, w=160)
-    return pdf.output(dest="S").encode("latin1")
+    output = pdf.output(dest="S")
+    # PyFPDF returns a Latin-1 string, while current fpdf2 returns bytearray.
+    # Normalize both to immutable PDF bytes for local and serverless runtimes.
+    return output.encode("latin1") if isinstance(output, str) else bytes(output)
