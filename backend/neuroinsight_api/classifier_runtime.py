@@ -8,9 +8,12 @@ honest unavailable-model response from the API layer.
 from __future__ import annotations
 
 import base64
+import hashlib
 import io
 import json
 import os
+from urllib.parse import urlparse
+from urllib.request import urlopen
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -104,9 +107,42 @@ class ExperimentalClassifier:
 def configured_classifier() -> ExperimentalClassifier | None:
     checkpoint = os.getenv("CLASSIFICATION_CHECKPOINT")
     calibration = os.getenv("CLASSIFICATION_CALIBRATION")
-    if not checkpoint or not calibration:
+    if checkpoint and calibration:
+        checkpoint_path, calibration_path = Path(checkpoint), Path(calibration)
+        if checkpoint_path.is_file() and calibration_path.is_file():
+            return ExperimentalClassifier(checkpoint_path, calibration_path)
+    if os.getenv("ENABLE_EXPERIMENTAL_MODEL", "false").lower() != "true":
         return None
-    checkpoint_path, calibration_path = Path(checkpoint), Path(calibration)
-    if not checkpoint_path.is_file() or not calibration_path.is_file():
+    checkpoint_url = os.getenv("CLASSIFICATION_CHECKPOINT_URL")
+    calibration_url = os.getenv("CLASSIFICATION_CALIBRATION_URL")
+    checkpoint_sha256 = os.getenv("CLASSIFICATION_CHECKPOINT_SHA256")
+    calibration_sha256 = os.getenv("CLASSIFICATION_CALIBRATION_SHA256")
+    if not checkpoint_url or not calibration_url or not checkpoint_sha256 or not calibration_sha256:
         return None
+    cache_dir = Path(os.getenv("MODEL_CACHE_DIR", "/tmp/neuroinsight-model"))
+    checkpoint_path = _download_verified_https(checkpoint_url, cache_dir / "experimental-classifier.pt", checkpoint_sha256)
+    calibration_path = _download_verified_https(calibration_url, cache_dir / "experimental-calibration.json", calibration_sha256)
     return ExperimentalClassifier(checkpoint_path, calibration_path)
+
+
+def _download_verified_https(url: str, destination: Path, expected_sha256: str) -> Path:
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise ValueError("Model artifact URLs must use HTTPS.")
+    if destination.is_file():
+        existing = hashlib.sha256(destination.read_bytes()).hexdigest()
+        if existing == expected_sha256:
+            return destination
+        destination.unlink()
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha256()
+    temporary = destination.with_suffix(destination.suffix + ".partial")
+    with urlopen(url, timeout=90) as response, temporary.open("wb") as stream:
+        while chunk := response.read(1024 * 1024):
+            digest.update(chunk)
+            stream.write(chunk)
+    if digest.hexdigest() != expected_sha256:
+        temporary.unlink(missing_ok=True)
+        raise ValueError("Downloaded model artifact checksum does not match the audited configured value.")
+    temporary.replace(destination)
+    return destination
