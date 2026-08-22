@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { scanArtifacts, scanRecords } from "../../drizzle/schema";
 import { getDb } from "../db";
-import { storagePut } from "../storage";
+import { storageGetSignedUrl, storagePut } from "../storage";
 import { artifactRegistrationSchema, scanResultSchema, validateArtifactPayload } from "./validation";
 import { protectedProcedure, router } from "../_core/trpc";
 import { z } from "zod";
@@ -41,13 +41,13 @@ export const scansRouter = router({
     const db = await getDb();
     if (!db) throw new Error("Scan history database is unavailable.");
     const [artifact] = await db
-      .select({ id: scanArtifacts.id, storageUrl: scanArtifacts.storageUrl, artifactType: scanArtifacts.artifactType })
+      .select({ id: scanArtifacts.id, storageKey: scanArtifacts.storageKey, artifactType: scanArtifacts.artifactType })
       .from(scanArtifacts)
       .innerJoin(scanRecords, eq(scanArtifacts.scanRecordId, scanRecords.id))
       .where(and(eq(scanArtifacts.id, input.artifactId), eq(scanRecords.userId, ctx.user.id)))
       .limit(1);
     if (!artifact) throw new Error("Artifact was not found for this user.");
-    return artifact;
+    return { ...artifact, storageUrl: await storageGetSignedUrl(artifact.storageKey) };
   }),
 
   deleteOne: protectedProcedure.input(z.object({ scanId: z.string().uuid() })).mutation(async ({ ctx, input }) => {

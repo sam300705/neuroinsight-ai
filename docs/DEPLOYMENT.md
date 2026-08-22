@@ -5,9 +5,9 @@ The managed Node dashboard and the Python validation service are intentionally d
 | Component | Packaging state | Operational boundary |
 |---|---|---|
 | React + tRPC dashboard | Managed Node application | It can be published from the project interface after review of a saved checkpoint. |
-| Scan metadata and derived artifact references | Managed database plus preconfigured object storage | History procedures require an authenticated account; raw scans are not persisted by default. |
-| FastAPI validation/report service | `backend/Dockerfile` and `backend/compose.yaml` | Run separately on a Python-capable service. The current endpoint validates inputs and returns an honest **unavailable-model** state. |
-| Exploratory classification/segmentation checkpoints | Intentionally external to the repository and container context | They must not be deployed before the provenance, calibration, and held-out-evaluation gates in `docs/OPEN_GATES.md` close. |
+| Scan metadata and derived artifact references | Managed database plus preconfigured object storage | History procedures require an authenticated account; ownership is checked before a fresh signed download URL is issued for a derived artifact. Raw scans are not persisted. |
+| FastAPI validation/report service | Vercel FastAPI function using ONNX Runtime | A separate HTTPS service performs configured Mode A experimental inference and generates derived PDF reports. Mode B remains unavailable. |
+| Experimental classification checkpoint and calibration metadata | External to the repository and Vercel function bundle | SHA-256-verified HTTPS retrieval is used at runtime. Raw MRI data and weights are not committed to Git. |
 
 ## Dashboard configuration
 
@@ -33,24 +33,28 @@ cd backend
 docker compose up --build
 ```
 
-The container has no model weight files. A successful request to `/api/v1/analyze` therefore confirms only multipart upload validation and truthful unavailable-model handling; it does **not** confirm model inference.
+The local container intentionally contains no model weight files. In the verified external service, the ONNX model, metadata, and validation calibration file are fetched over HTTPS with fixed SHA-256 verification. Neither configuration makes a medical or clinical claim.
 
 ## Smoke-test procedure
 
 | Step | Command or action | Expected evidence |
 |---|---|---|
-| Health endpoint | `curl -fsS http://127.0.0.1:8000/health` | `status: ok` and the service identifier. |
-| Readiness endpoint | `curl -fsS http://127.0.0.1:8000/ready` | `ready: false` with an explicit model-unavailable reason. |
-| Corrupted upload | `curl -sS -o /dev/null -w "%{http_code}" -F mode=classification -F file=@/path/to/corrupt.png http://127.0.0.1:8000/api/v1/analyze` | HTTP `422`; do not substitute a model result. |
-| Valid research file | Submit a non-sensitive compatible test image or NIfTI volume | HTTP `200` with `status: unavailable`, no prediction, no confidence score, and manual review recommended. |
-| Dashboard integration | Set `VITE_INFERENCE_API_BASE_URL`, rebuild, and upload the same file | The UI surfaces the server validation result and navigates only after an honest response. |
+| Health endpoint | `curl -fsS https://<verified-service>/health` | `status: ok` and the service identifier. |
+| Readiness endpoint | `curl -fsS https://<verified-service>/ready` | `ready: true` only when the experimental ONNX classifier initialized successfully. |
+| Model information | `curl -fsS https://<verified-service>/api/v1/model-info` | Mode A marked `available`; Mode B explicitly `unavailable`. |
+| Corrupted upload | POST a deliberately malformed PNG or JPEG to `/api/v1/classify` | HTTP `422`; no simulated prediction is returned. |
+| Valid public research image | Submit one lawful, non-sensitive fixed-split public JPEG or PNG | HTTP `200` with the actual experimental class, model confidence score, calibrated state, Grad-CAM payload, and mandatory non-clinical warnings. This is image-level experimental evidence only. |
+| Derived report | POST that returned analysis and Grad-CAM payload to `/api/v1/report` | A valid `%PDF` document containing the returned metadata and real Grad-CAM attribution; no raw MRI is embedded or stored by the dashboard. |
+| Dashboard integration | Set `VITE_INFERENCE_API_BASE_URL`, restart the managed dashboard, and upload the same file | The UI surfaces the authoritative response. Authenticated users can consent to save metadata, the derived PDF, and Grad-CAM to protected history; the original MRI upload is not saved. |
 
 ## Publication boundary
 
 ## Vercel academic-demo backend attempt
 
-An authorized Vercel preview of `backend/` was created from the private repository on 2026-08-22. The first build failed before serving any request because default PyTorch dependencies produced a **4,658.61 MB** Python function bundle, exceeding Vercel’s reported **500 MB** maximum. A CPU-only PyTorch attempt reduced this to 794.41 MB but still exceeded the limit. The deployment path was therefore changed to the verified ONNX Runtime implementation, which completed a Vercel build successfully. Its first health request revealed a missing `fpdf2` dependency required by the existing PDF report module; this dependency is now declared explicitly. No external endpoint is treated as verified until health, readiness, CORS, corrupt-upload, real non-sensitive inference, and report paths all pass.
+An authorized Vercel deployment of `backend/` was created from the private repository on 2026-08-22. The first build failed because default PyTorch dependencies produced a **4,658.61 MB** Python function bundle, exceeding Vercel’s reported **500 MB** maximum. A CPU-only PyTorch attempt reduced this to 794.41 MB but still exceeded the limit. The deployment path therefore changed to ONNX Runtime.
+
+The final ONNX deployment passed HTTPS health and readiness, exact-preview-origin CORS preflight, malformed-upload rejection, actual inference on one lawful public fixed-split test image, and a two-page PDF report generated from that response and real Grad-CAM. An early report-route failure was isolated to the external FPDF layout behavior and corrected using explicit paragraph widths. The output from the public glioma-labelled test image was **meningioma** with model confidence score `0.825931191444397`; this incorrect result is retained as evidence of an experimental, non-diagnostic system rather than being hidden or treated as clinical performance.
 
 The selected experimental checkpoint remains outside Git and raw MRI datasets are not uploaded. The Vercel entry point can retrieve only the published checkpoint and calibration JSON through HTTPS and checks their fixed SHA-256 values before loading. It preserves the academic, non-diagnostic boundary in every response.
 
-To publish the current managed dashboard, create and review a checkpoint, then use the project interface’s **Publish** control. Publication does not authorize model activation. The public dashboard must retain its unavailable-model state until the separate evidence gates are closed.
+To publish the current managed dashboard, create and review a checkpoint, then use the project interface’s **Publish** control. After publication, add that final public dashboard HTTPS origin to the Vercel CORS allowlist alongside localhost development origins, re-verify preflight, and publish a new backend deployment. Publication does not make the experimental model clinically valid and must retain the persistent notice: **“This system is not a medical diagnosis and must not replace a qualified radiologist.”**
