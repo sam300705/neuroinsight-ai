@@ -47,7 +47,7 @@ The final regression run passed all of the following:
 
 | Layer | Result |
 |---|---|
-| Web tests | 29 passing tests |
+| Web tests | 31 passing tests |
 | FastAPI tests | 12 passing tests |
 | ML/data tests | 8 passing tests |
 | TypeScript check | Passed |
