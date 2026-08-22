@@ -13,3 +13,7 @@ An isolated FastAPI process was started on `127.0.0.1:8011` with `CORS_ALLOWED_O
 ## 2026-08-21 — Keyboard-navigation shell check
 
 After adding the global skip link, localized navigation-control names, and the focusable main-content target, mobile captures of the overview and analysis routes at 375×812 retained the visible research-use banner, language switcher, menu trigger, headings, scoped mode cards, and upload guidance without layout overlap.
+
+## 2026-08-22 — Real Mode A local inference and report check
+
+The FastAPI service was started temporarily with the local EXP-005 BDNeuro-MRI ResNet50 checkpoint and its validation-only calibration JSON explicitly configured. `/health` returned `status: ok`; `/ready` returned `ready: true` and the non-clinical experimental-scope reason. A public fixed-split BDNeuro-MRI test image was submitted to `/api/v1/classify`; the real response contained `status: complete`, a predicted class, a validation-calibrated model-confidence score, and a 82,885-byte response containing a real Grad-CAM PNG payload. The same unmodified analysis response and its Grad-CAM payload were used to create a 65 KB, two-page PDF through `/api/v1/report`. The temporary process was terminated afterward to avoid retaining a model process in the sandbox. This check establishes local software-path behavior only, not patient-level, external, clinical, or diagnostic validation.

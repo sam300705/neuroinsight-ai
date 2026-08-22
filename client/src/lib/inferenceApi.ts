@@ -4,10 +4,15 @@ export type InferenceAnalysisResponse = {
   request_id: string;
   scan_id: string;
   mode: AnalysisMode;
-  status: "unavailable" | "ready" | "incompatible";
+  status: "complete" | "low_confidence" | "unavailable" | "incompatible" | "partial";
   model_version: string;
   processing_time_ms: number;
   manual_review_recommended: boolean;
+  predicted_class?: "glioma" | "meningioma" | "pituitary" | "no_tumor" | null;
+  model_confidence_score?: number | null;
+  calibrated?: boolean;
+  uncertainty_reason?: string | null;
+  grad_cam_png_base64?: string | null;
   warnings: string[];
   limitations: string[];
 };

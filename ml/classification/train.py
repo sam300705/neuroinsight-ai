@@ -104,14 +104,15 @@ def main() -> None:
     parser.add_argument("--pretrained", action="store_true")
     args = parser.parse_args()
     seeded(args.seed); args.output.mkdir(parents=True, exist_ok=True)
-    train_rows, validation_rows = select_rows(args.manifest, "train", args.limit_per_class), select_rows(args.manifest, "validation", args.limit_per_class)
-    if not train_rows or not validation_rows: raise SystemExit("Both train and validation rows are required")
+    train_rows, validation_rows, test_rows = select_rows(args.manifest, "train", args.limit_per_class), select_rows(args.manifest, "validation", args.limit_per_class), select_rows(args.manifest, "test", args.limit_per_class)
+    if not train_rows or not validation_rows or not test_rows: raise SystemExit("Train, validation, and held-out test rows are required")
     image_size = args.image_size
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     train_transform = transforms.Compose([transforms.Resize((image_size, image_size)), transforms.RandomRotation(7), transforms.ToTensor(), normalize])
     validation_transform = transforms.Compose([transforms.Resize((image_size, image_size)), transforms.ToTensor(), normalize])
     train_loader = DataLoader(ManifestDataset(train_rows, args.dataset_root, train_transform), batch_size=args.batch_size, shuffle=True, num_workers=0)
     validation_loader = DataLoader(ManifestDataset(validation_rows, args.dataset_root, validation_transform), batch_size=args.batch_size, shuffle=False, num_workers=0)
+    test_loader = DataLoader(ManifestDataset(test_rows, args.dataset_root, validation_transform), batch_size=args.batch_size, shuffle=False, num_workers=0)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model, weights_source = create_model(args.architecture, args.pretrained); model.to(device); freeze_backbone(model, args.architecture)
     optimizer = torch.optim.AdamW((parameter for parameter in model.parameters() if parameter.requires_grad), lr=args.learning_rate, weight_decay=0.01)
@@ -124,13 +125,13 @@ def main() -> None:
             cumulative_loss += loss.item() * labels.size(0); sample_count += labels.size(0)
         validation = evaluate(model, validation_loader, device)
         epoch_history.append({"epoch": epoch, "train_loss": cumulative_loss / max(1, sample_count), "validation": validation})
+    test_metrics = evaluate(model, test_loader, device)
     checkpoint = args.output / f"{args.architecture}_head_only.pt"
     torch.save({"architecture": args.architecture, "labels": LABELS, "image_size": image_size, "state_dict": model.state_dict()}, checkpoint)
-    metrics = {"experiment_type": "head-only transfer-learning smoke experiment", "architecture": args.architecture, "weights_source": weights_source, "device": str(device), "seed": args.seed, "epochs": args.epochs, "batch_size": args.batch_size, "image_size": image_size, "learning_rate": args.learning_rate, "train_samples": len(train_rows), "validation_samples": len(validation_rows), "train_class_counts": Counter(row["label"] for row in train_rows), "validation_class_counts": Counter(row["label"] for row in validation_rows), "elapsed_seconds": time.perf_counter() - started_at, "history": epoch_history, "checkpoint": str(checkpoint), "important_limitations": ["This experiment uses a deterministic exact-image-hash split because patient identifiers are absent; it is not patient-level evaluation.", "The supplied Mendeley train/test partition was rejected after exact duplicates were observed across its partitions.", "No held-out test metric was calculated in this experiment. Validation metrics are for development comparison only.", "No clinical or medical-diagnostic claim may be made from this result."]}
+    metrics = {"experiment_type": "head-only transfer-learning experimental demonstration", "evaluation_unit": "image-level fixed official split; patient identifiers unavailable", "architecture": args.architecture, "weights_source": weights_source, "device": str(device), "seed": args.seed, "epochs": args.epochs, "batch_size": args.batch_size, "image_size": image_size, "learning_rate": args.learning_rate, "train_samples": len(train_rows), "validation_samples": len(validation_rows), "test_samples": len(test_rows), "train_class_counts": Counter(row["label"] for row in train_rows), "validation_class_counts": Counter(row["label"] for row in validation_rows), "test_class_counts": Counter(row["label"] for row in test_rows), "elapsed_seconds": time.perf_counter() - started_at, "history": epoch_history, "test": test_metrics, "checkpoint": str(checkpoint), "important_limitations": ["Patient identifiers are absent; this is not patient-level, external, clinical, or diagnostic evaluation.", "The supplied official image-level split was re-audited for exact duplication and sanitized conservatively for perceptual-similarity review candidates before training.", "Held-out test metrics apply only to the released fixed image-level split and must not be generalized to clinical practice.", "No clinical or medical-diagnostic claim may be made from this result."]}
     (args.output / "metrics.json").write_text(json.dumps(metrics, indent=2, default=float), encoding="utf-8")
-    print(json.dumps({"architecture": args.architecture, "validation_accuracy": epoch_history[-1]["validation"]["accuracy"], "validation_macro_f1": epoch_history[-1]["validation"]["macro_f1"], "elapsed_seconds": metrics["elapsed_seconds"], "metrics": str(args.output / "metrics.json")}, indent=2))
+    print(json.dumps({"architecture": args.architecture, "validation_accuracy": epoch_history[-1]["validation"]["accuracy"], "validation_macro_f1": epoch_history[-1]["validation"]["macro_f1"], "test_accuracy": test_metrics["accuracy"], "test_macro_f1": test_metrics["macro_f1"], "elapsed_seconds": metrics["elapsed_seconds"], "metrics": str(args.output / "metrics.json")}, indent=2))
 
 
 if __name__ == "__main__":
     main()
-

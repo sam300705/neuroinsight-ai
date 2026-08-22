@@ -6,8 +6,8 @@
 - [x] Build a clearly labelled Mode B glioma-focused volumetric NIfTI segmentation workflow with supported-scope guidance.
 - [x] Implement drag-and-drop upload with extension, MIME type, size, and corrupted-file validation plus compatible error states.
 - [x] Implement input-quality checks and manual-review warnings for low-quality, incompatible, or out-of-distribution inputs.
-- [ ] Display the predicted class and explicitly label model confidence as a non-medical model confidence score.
-- [ ] Implement calibration and uncertainty status with a validation-derived abstention threshold and manual-review warning state.
+- [x] Display the predicted class and explicitly label model confidence as a non-medical model confidence score.
+- [x] Implement calibration and uncertainty status with a validation-derived abstention threshold and manual-review warning state.
 - [x] Generate real classifier Grad-CAM artifacts with an opacity slider, colour legend, and persistent coarse-attribution disclaimer.
 - [x] Render segmentation masks in a 2D slice overlay with the persistent glioma-focused scope disclaimer.
 - [x] Calculate segmentation area only with valid spacing metadata and otherwise return pixel count and image-occupancy percentage.
@@ -35,3 +35,10 @@
 - [ ] Add end-to-end coverage for a corrupted image or NIfTI upload in the analysis workflow.
 - [x] Document calibration evidence or its explicit absence for each analysis mode and explain the resulting deployment gate.
 - [x] Add verified security and privacy evidence for raw-scan handling, protected history access, artifact boundaries, deletion confirmation, and scope disclaimers.
+- [x] Re-audit authoritative public Mode A sources for licence, provenance, citation, format, case identifiers, split integrity, source-confounding risk, and academic-demo suitability.
+- [x] Select and document the most defensible permitted Mode A scope, explicitly retaining image-level rather than patient-independent evaluation when case identifiers are unavailable.
+- [x] Train, calibrate where justified, and evaluate real reproducible experimental models using the approved source(s), without fabricating clinical validation.
+- [ ] Connect real local model inference to predictions, model-confidence labels, Grad-CAM, segmentation, measurements, reports, artifact registration, and protected history retrieval.
+- [ ] Run local end-to-end checks using non-sensitive demonstration files, including corrupt-upload rejection and real derived-artifact retrieval. (Corrupt rejection, real inference, Grad-CAM, and PDF generation are verified; persisted protected history retrieval remains pending.)
+- [ ] Prepare an HTTPS deployment of the FastAPI validation service, verify health/readiness, and set only exact dashboard and localhost CORS origins after the dashboard URL is known.
+- [ ] Create a publish-ready dashboard checkpoint and provide the user with the required project-interface publication handover; do not represent publishing as clinical validation.

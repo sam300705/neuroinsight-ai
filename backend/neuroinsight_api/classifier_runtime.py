@@ -1,0 +1,112 @@
+"""Optional experimental runtime for a locally configured audited classifier.
+
+No checkpoint is bundled with the service. The caller must provide explicit
+local paths through environment variables; otherwise callers receive the
+honest unavailable-model response from the API layer.
+"""
+
+from __future__ import annotations
+
+import base64
+import io
+import json
+import os
+from dataclasses import dataclass
+from pathlib import Path
+
+import numpy as np
+import torch
+from PIL import Image
+from torchvision import models, transforms
+
+MODEL_LABELS = ["glioma", "meningioma", "notumor", "pituitary"]
+PUBLIC_LABELS = {"notumor": "no_tumor", "glioma": "glioma", "meningioma": "meningioma", "pituitary": "pituitary"}
+
+
+@dataclass(frozen=True)
+class ExperimentalPrediction:
+    predicted_class: str
+    confidence: float
+    calibrated: bool
+    status: str
+    uncertainty_reason: str | None
+    grad_cam_png_base64: str
+
+
+def _create_model(architecture: str) -> torch.nn.Module:
+    if architecture != "resnet50":
+        raise ValueError(f"Unsupported experimental classification architecture: {architecture}")
+    model = models.resnet50(weights=None)
+    model.fc = torch.nn.Linear(model.fc.in_features, 4)
+    return model
+
+
+class ExperimentalClassifier:
+    def __init__(self, checkpoint_path: Path, calibration_path: Path):
+        saved = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+        if saved.get("architecture") != "resnet50" or saved.get("labels") != MODEL_LABELS:
+            raise ValueError("Configured checkpoint does not match the supported audited ResNet50 four-class contract.")
+        self.model = _create_model(saved["architecture"])
+        self.model.load_state_dict(saved["state_dict"])
+        self.model.eval()
+        self.image_size = int(saved["image_size"])
+        calibration = json.loads(calibration_path.read_text(encoding="utf-8"))
+        self.temperature = float(calibration["temperature"])
+        self.abstention_threshold = float(calibration["abstention_policy"]["threshold"])
+        self.transform = transforms.Compose([
+            transforms.Resize((self.image_size, self.image_size)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
+        self.target_layer = self.model.layer4[-1]
+
+    def predict(self, payload: bytes) -> ExperimentalPrediction:
+        image = Image.open(io.BytesIO(payload)).convert("RGB")
+        tensor = self.transform(image).unsqueeze(0)
+        activations: list[torch.Tensor] = []
+        gradients: list[torch.Tensor] = []
+        forward = self.target_layer.register_forward_hook(lambda _, __, output: activations.append(output))
+        backward = self.target_layer.register_full_backward_hook(lambda _, __, grad_output: gradients.append(grad_output[0]))
+        try:
+            logits = self.model(tensor)
+            scaled_logits = logits / self.temperature
+            probabilities = torch.softmax(scaled_logits, dim=1)
+            index = int(probabilities.argmax(dim=1).item())
+            confidence = float(probabilities[0, index].item())
+            self.model.zero_grad(set_to_none=True)
+            logits[0, index].backward()
+            weights = gradients[0].mean(dim=(2, 3), keepdim=True)
+            heatmap = torch.relu((weights * activations[0]).sum(dim=1, keepdim=True))
+            heatmap = torch.nn.functional.interpolate(heatmap, size=(image.height, image.width), mode="bilinear", align_corners=False)[0, 0].detach().numpy()
+        finally:
+            forward.remove()
+            backward.remove()
+        heatmap = (heatmap - heatmap.min()) / max(float(heatmap.max() - heatmap.min()), 1e-8)
+        base = np.asarray(image, dtype=np.float32) / 255.0
+        colour = np.zeros_like(base)
+        colour[..., 0] = heatmap
+        colour[..., 1] = 0.15 + 0.55 * (1 - np.abs(heatmap - 0.5) * 2)
+        colour[..., 2] = 1 - heatmap
+        overlay = Image.fromarray((np.clip(0.52 * base + 0.48 * colour, 0, 1) * 255).astype(np.uint8))
+        buffer = io.BytesIO()
+        overlay.save(buffer, format="PNG", optimize=True)
+        status = "complete" if confidence >= self.abstention_threshold else "low_confidence"
+        return ExperimentalPrediction(
+            predicted_class=PUBLIC_LABELS[MODEL_LABELS[index]],
+            confidence=confidence,
+            calibrated=True,
+            status=status,
+            uncertainty_reason=None if status == "complete" else "The experimental model confidence score is below the validation-derived abstention threshold; qualified review is required.",
+            grad_cam_png_base64=base64.b64encode(buffer.getvalue()).decode("ascii"),
+        )
+
+
+def configured_classifier() -> ExperimentalClassifier | None:
+    checkpoint = os.getenv("CLASSIFICATION_CHECKPOINT")
+    calibration = os.getenv("CLASSIFICATION_CALIBRATION")
+    if not checkpoint or not calibration:
+        return None
+    checkpoint_path, calibration_path = Path(checkpoint), Path(calibration)
+    if not checkpoint_path.is_file() or not calibration_path.is_file():
+        return None
+    return ExperimentalClassifier(checkpoint_path, calibration_path)

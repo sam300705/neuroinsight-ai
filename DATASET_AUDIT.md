@@ -39,3 +39,24 @@ The preparation script will produce a manifest with anonymized patient ID, file 
 [5]: https://figshare.com/articles/dataset/brain_tumor_dataset/1512427 "Figshare brain tumor dataset"
 [6]: https://zenodo.org/records/7786009 "Zenodo Brain Tumor MRI Dataset"
 [7]: https://data.mendeley.com/datasets/zwr4ntf94j/1 "Mendeley Brain Tumor MRI Dataset"
+
+## 2026-08-22 Mode A reassessment: BDNeuro-MRI version 7
+
+The latest first-party Mendeley record is **BDNeuro-MRI: A Bangladeshi Clinical Brain Tumor MRI Dataset for Four-Class Deep Learning Classification**, version 7, DOI `10.17632/zwr4ntf94j.7`. The record declares **CC BY 4.0**, names Epic & CSCR Hospital in Bangladesh as the source, and describes 5,941 preprocessed T1-weighted contrast-enhanced JPEG/PNG images in glioma, meningioma, pituitary, and no-tumor classes. It provides a fixed stratified 70/15/15 train/validation/test directory structure with 4,160/892/889 images and states that exact MD5 and perceptual-hash duplicate removal occurred before a zero image-content overlap check across the final splits.[8]
+
+The accompanying maintainer repository corroborates the documented image-level deduplication and split procedure, but importantly states that filenames are anonymized sequential labels and no original or patient identifiers are retained. It also contains an unfinished repository-level licence placeholder, even though the authoritative Mendeley record presents CC BY 4.0. The Mendeley record is therefore the controlling public licence evidence for the data download, while the repository is used only as supporting reproducibility evidence.[9]
+
+> **Mode A decision:** BDNeuro-MRI version 7 is the most defensible currently available four-class public academic-demonstration candidate because its official record states a CC BY 4.0 licence, identifies a clinical source, specifies a released three-way split, and documents exact/near-duplicate controls. Patient/case identifiers are genuinely absent; all Mode A results will therefore be labelled **image-level, fixed-split experimental evaluation**, not patient-independent, external, clinical, or diagnostic validation. The no-tumor class will be retained because it is part of the single described hospital-derived release rather than assembled from an unrelated healthy-image source.
+
+### Mode A residual limitations
+
+The record’s clinical-source description does not itself supply a case manifest, acquisition-level metadata, consent/governance documentation, original DICOM linkage, or an independently audited patient-level leakage check. The reported zero overlap applies to images/content hashes, not demonstrated patients. This dataset can support a transparent academic demonstration but cannot substantiate clinical generalisation.
+
+### Local integrity audit result
+
+The official version-7 archive was downloaded directly from the Mendeley record on 2026-08-22 and audited with `ml/classification/audit_bdneuro.py`. All **5,941** expected JPEG/PNG files were readable. The archive contained **0 exact-content duplicate groups across train/validation/test**. A conservative 64-bit perceptual-DCT hash review at Hamming distance ≤4 produced **101 cross-split similarity candidates**. Because such similarity is a review signal rather than patient identity, the script did not represent it as patient overlap. To prevent avoidable train/test mixing in the demonstration, it excluded 100 candidate train/validation images while preserving the released test files, writing `bdneuro_v7_sanitized_manifest.csv` for training.
+
+The final experiment protocol uses the sanitized official fixed split, preserves the test partition for one-time held-out image-level evaluation, and records the complete audit JSON and manifest outside Git with the experimental artifacts. No raw images, archive, or patient information are committed to the repository.
+
+[8]: https://data.mendeley.com/datasets/zwr4ntf94j/7 "BDNeuro-MRI, Mendeley Data version 7"
+[9]: https://github.com/irfanulkabirhira/A-Bangladeshi-Clinical-Brain-Tumor-MRI-Dataset-for-Four-Class-Deep-Learning-Classification "BDNeuro-MRI maintainer reproducibility repository"

@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from .constants import ACADEMIC_DISCLAIMER, GLIOMA_SCOPE_DISCLAIMER, MODEL_UNAVAILABLE_MESSAGE
+from .classifier_runtime import ExperimentalClassifier, configured_classifier
 from .offline_faq import answer_offline
 from .schemas import AnalysisMode, AnalysisResponse, ChatRequest, ChatResponse, Measurement, ModelInfo, ReportRequest
 from .reporting import build_report
@@ -19,7 +20,7 @@ from .upload_validation import UploadValidationError, validate_upload
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    # Model initialization belongs here once licensed, verified artifact paths exist.
+    app.state.classifier = configured_classifier()
     yield
 
 
@@ -76,6 +77,27 @@ def _unavailable_result(request: Request, mode: AnalysisMode, started_at: float)
     )
 
 
+def _classification_result(request: Request, classifier: ExperimentalClassifier, payload: bytes, started_at: float) -> AnalysisResponse:
+    prediction = classifier.predict(payload)
+    return AnalysisResponse(
+        request_id=request.headers.get("x-request-id", "unknown"),
+        scan_id=str(uuid.uuid4()),
+        mode=AnalysisMode.CLASSIFICATION,
+        status=prediction.status,
+        model_version="bdneuro-v7-resnet50-head-only-exp005",
+        processing_time_ms=int((time.perf_counter() - started_at) * 1000),
+        predicted_class=prediction.predicted_class,
+        model_confidence_score=prediction.confidence,
+        calibrated=prediction.calibrated,
+        uncertainty_reason=prediction.uncertainty_reason,
+        manual_review_recommended=True,
+        measurement=Measurement(kind="unavailable", metadata_confirmed=False, limitation="Classification produces no segmentation mask or physical measurement."),
+        grad_cam_png_base64=prediction.grad_cam_png_base64,
+        warnings=["Experimental image-level academic result. The model confidence score is not a medical probability.", "Qualified radiologist review is required; this system is not a medical diagnosis."],
+        limitations=[ACADEMIC_DISCLAIMER, "The experimental classifier was evaluated only on a fixed image-level public split with no patient identifiers. It is not clinically or externally validated.", "Grad-CAM is coarse classifier attribution, not a tumor boundary."],
+    )
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "neuroinsight-inference"}
@@ -83,19 +105,21 @@ async def health():
 
 @app.get("/ready")
 async def ready():
-    return {"ready": False, "reason": MODEL_UNAVAILABLE_MESSAGE}
+    classifier = getattr(app.state, "classifier", None)
+    return {"ready": bool(classifier), "reason": "Experimental classifier configured; academic non-clinical scope only." if classifier else MODEL_UNAVAILABLE_MESSAGE}
 
 
 @app.get("/api/v1/model-info", response_model=list[ModelInfo])
 async def model_info():
+    classifier = getattr(app.state, "classifier", None)
     return [
         ModelInfo(
-            version="unconfigured",
-            status="unavailable",
+            version="bdneuro-v7-resnet50-head-only-exp005" if classifier else "unconfigured",
+            status="available" if classifier else "unavailable",
             mode=AnalysisMode.CLASSIFICATION,
             supported_formats=["image/png", "image/jpeg"],
-            scope="2D four-class brain MRI classification once a verified model is installed",
-            calibration_status="not evaluated",
+            scope="Experimental 2D four-class brain MRI image classification; fixed image-level public-split evidence only, not clinical diagnosis",
+            calibration_status="validation-only temperature scaling; model confidence score is not a medical probability" if classifier else "not evaluated",
         ),
         ModelInfo(
             version="unconfigured",
@@ -117,6 +141,8 @@ async def analyze(
     started_at = time.perf_counter()
     payload = await file.read()
     validate_upload(payload, file.filename or "upload", file.content_type, mode)
+    if mode is AnalysisMode.CLASSIFICATION and (classifier := getattr(app.state, "classifier", None)):
+        return _classification_result(request, classifier, payload, started_at)
     return _unavailable_result(request, mode, started_at)
 
 
@@ -125,6 +151,8 @@ async def classify(request: Request, file: UploadFile = File(...)):
     started_at = time.perf_counter()
     payload = await file.read()
     validate_upload(payload, file.filename or "upload", file.content_type, AnalysisMode.CLASSIFICATION)
+    if classifier := getattr(app.state, "classifier", None):
+        return _classification_result(request, classifier, payload, started_at)
     return _unavailable_result(request, AnalysisMode.CLASSIFICATION, started_at)
 
 

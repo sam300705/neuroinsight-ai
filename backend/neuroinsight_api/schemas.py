@@ -45,6 +45,7 @@ class AnalysisResponse(BaseModel):
     manual_review_recommended: bool
     measurement: Measurement
     grad_cam_url: str | None = None
+    grad_cam_png_base64: str | None = Field(default=None, max_length=14_000_000)
     segmentation_mask_url: str | None = None
     warnings: list[str]
     limitations: list[str]

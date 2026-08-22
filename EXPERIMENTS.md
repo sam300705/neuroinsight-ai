@@ -11,6 +11,8 @@
 | DATA-002 | 2026-08-21 | Segmentation | Medical Segmentation Decathlon Task01 BrainTumour, release 2.0 | NIfTI decoder, SHA-256, shape, spacing, orientation, case/label linkage audit | 484 labelled training cases and 266 unlabelled test cases as declared in `dataset.json` | 1,234 readable NIfTI volumes across 750 cases; zero remaining incompatibilities after excluding 35 AppleDouble sidecars | Approved for bounded glioma-focused development; hidden test labels remain unused |
 | EXP-003 | 2026-08-21 | Segmentation | DATA-002 Task01 labelled training cases | Tiny 2D U-Net; four MRI channels; binary whole-tumor target; 128 px, batch 4, AdamW 0.001, 10 epochs, seed 20260821 | 4 case-level train / 2 disjoint case-level validation; 32/16 selected tumor-positive axial slices | Final validation mean slice Dice 0.6759; pixel precision 0.8983; recall 0.7964; 126.55 s CPU | Bounded smoke evidence only; not full 3D, not hidden-test, not deployable |
 | EXP-004 | 2026-08-21 | Segmentation inference artifact | EXP-003 checkpoint; Task01 `BRATS_450` | Full-volume slice-wise TinyUNet2D inference; threshold 0.5 | No model-selection update; case used only to verify artifact generation | Mask NIfTI and 240×240 overlay generated; 80,027 voxels; 80.027 mL using source 1 mm³ spacing | Exploratory case artifact only; not clinical measurement, not a deployed inference result |
+| DATA-003 | 2026-08-22 | Classification | BDNeuro-MRI V7, DOI 10.17632/zwr4ntf94j.7, CC BY 4.0 | Decoder, SHA-256, 64-bit perceptual-DCT hash audit | Official 70/15/15 image-level folders; patient IDs absent | 5,941 readable images; 0 exact cross-split duplicate groups; 101 pHash review pairs; 100 train/validation images excluded conservatively | Approved for image-level academic demonstration only; not patient-independent evaluation |
+| EXP-005 | 2026-08-22 | Classification | DATA-003 sanitized official manifest | ResNet50 ImageNet frozen-backbone, trained four-class head; 160 px, batch 24, AdamW 0.001, 3 epochs, seed 20260821 | 4,070 train / 882 validation / 889 held-out image-level test images | Validation accuracy 0.8186, macro F1 0.8238; test accuracy 0.8099, macro F1 0.8080, weighted F1 0.8110; 277.61 s CPU | Real experimental fixed-split evidence; not patient-level, external, calibrated, clinical, or diagnostic validation |
 
 ## Integrity rule
 
@@ -25,3 +27,9 @@ Neither `EXP-001` nor `EXP-002` is selected for application inference. Both expe
 ## Calibration status
 
 No calibration method, calibration split, reliability analysis, expected calibration error, Brier score, or abstention threshold was calculated for the classification experiments. The segmentation smoke experiment likewise has no uncertainty calibration or full-volume threshold study. These omissions are recorded explicitly in `docs/CALIBRATION_STATUS.md`, and they are the reason neither checkpoint produces an application confidence score.
+
+## EXP-005 interpretation
+
+EXP-005 is the selected **Mode A academic demonstration candidate** because it uses a current four-class, single-source public record with a stated CC BY 4.0 licence, an official train/validation/test split, and a local duplicate audit. The held-out test accuracy was 0.8099 and macro F1 was 0.8080 on the released image-level test folder. Per-class test F1 was 0.8373 for glioma, 0.7090 for meningioma, 0.8133 for no tumor, and 0.8725 for pituitary.
+
+> These numbers are limited to the sanitized released image-level split. The dataset has no retained patient identifiers, and no external cohort, reliability calibration, uncertainty threshold, or clinical validation was performed. They must not be presented as patient-level performance, clinical accuracy, diagnostic probability, or a radiologist substitute.
