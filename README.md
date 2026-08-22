@@ -21,13 +21,26 @@ The dashboard uses React, TypeScript, Vite, Tailwind, Express/tRPC, Drizzle, and
 ## Local verification
 
 ```bash
+pnpm install --frozen-lockfile
 pnpm check
 pnpm test
 pnpm build
+cd backend && PYTHONPATH=. pytest -q tests
+cd .. && PYTHONPATH=. pytest -q ml/tests
 ```
 
-The Python/API and machine-learning checks are documented in `docs/TEST_REPORT.md`. Public deployment, data provenance, calibration, privacy, and release boundaries are documented in `docs/PUBLIC_HANDOVER.md`, `DATASET_AUDIT.md`, `EXPERIMENTS.md`, `docs/CALIBRATION_STATUS.md`, and `docs/CAPABILITY_MANIFEST.md`.
+The configured inference service is deliberately checked separately from deterministic unit tests: `INFERENCE_API_BASE_URL=https://your-service.example pnpm test:smoke:inference`. Do not put a private URL, signed URL, token, or credential in source control. The Python/API and machine-learning checks are documented in `docs/TEST_REPORT.md`.
+
+Public deployment, data provenance, calibration, privacy, and release boundaries are documented in `docs/PUBLIC_HANDOVER.md`, `DATASET_AUDIT.md`, `EXPERIMENTS.md`, `docs/CALIBRATION_STATUS.md`, `docs/CAPABILITY_MANIFEST.md`, `docs/BRISC_AUDIT.md`, and `docs/OPEN_GATES.md`.
 
 ## Research status
 
 The application is **Level 1: a functional academic demo**. Future research may use separately authorised public data, but each new dataset/model must undergo provenance, integrity, duplicate/leakage, evaluation, and deployment review before it can affect the live service.
+
+## Security and contribution process
+
+Read `SECURITY.md` before reporting a vulnerability; security reports must use a private approved channel and must never include credentials, raw MRI files, signed URLs, or personal data in public issues. Contribution expectations are in `CONTRIBUTING.md`, contributor conduct is described in `CODE_OF_CONDUCT.md`, and owner-managed branch-protection recommendations are in `docs/REPOSITORY_GOVERNANCE.md`.
+
+## Manual owner actions
+
+`docs/MORNING_SETUP_CHECKLIST.md` lists the remaining owner-controlled steps only: optional external-supervision quota restoration, any future data-access agreements, approved full-volume compute, and an explicit model-promotion or public-release decision. The repository does not create paid infrastructure, accept data-use terms, or activate Mode B automatically.
