@@ -3,6 +3,7 @@ import { scanArtifacts, scanRecords } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { storageGetSignedUrl, storagePut } from "../storage";
 import { artifactRegistrationSchema, scanResultSchema, validateArtifactPayload } from "./validation";
+import { deleteAllOwnedScans, deleteOwnedScan, issueOwnedArtifactDownload } from "./artifactLifecycle";
 import { protectedProcedure, router } from "../_core/trpc";
 import { z } from "zod";
 
@@ -40,30 +41,38 @@ export const scansRouter = router({
   getArtifactDownload: protectedProcedure.input(z.object({ artifactId: z.number().int().positive() })).query(async ({ ctx, input }) => {
     const db = await getDb();
     if (!db) throw new Error("Scan history database is unavailable.");
-    const [artifact] = await db
-      .select({ id: scanArtifacts.id, storageKey: scanArtifacts.storageKey, artifactType: scanArtifacts.artifactType })
-      .from(scanArtifacts)
-      .innerJoin(scanRecords, eq(scanArtifacts.scanRecordId, scanRecords.id))
-      .where(and(eq(scanArtifacts.id, input.artifactId), eq(scanRecords.userId, ctx.user.id)))
-      .limit(1);
-    if (!artifact) throw new Error("Artifact was not found for this user.");
-    return { ...artifact, storageUrl: await storageGetSignedUrl(artifact.storageKey) };
+    return issueOwnedArtifactDownload(ctx.user.id, input.artifactId, {
+      findOwnedArtifact: async (userId, artifactId) => {
+        const [artifact] = await db
+          .select({ id: scanArtifacts.id, storageKey: scanArtifacts.storageKey, artifactType: scanArtifacts.artifactType })
+          .from(scanArtifacts)
+          .innerJoin(scanRecords, eq(scanArtifacts.scanRecordId, scanRecords.id))
+          .where(and(eq(scanArtifacts.id, artifactId), eq(scanRecords.userId, userId)))
+          .limit(1);
+        return artifact;
+      },
+      createSignedUrl: storageGetSignedUrl,
+    });
   }),
 
   deleteOne: protectedProcedure.input(z.object({ scanId: z.string().uuid() })).mutation(async ({ ctx, input }) => {
     const db = await getDb(); if (!db) throw new Error("Scan history database is unavailable.");
-    const [record] = await db.select().from(scanRecords).where(and(eq(scanRecords.userId, ctx.user.id), eq(scanRecords.scanId, input.scanId))).limit(1);
-    if (!record) return { deleted: false };
-    await db.delete(scanArtifacts).where(eq(scanArtifacts.scanRecordId, record.id));
-    await db.delete(scanRecords).where(eq(scanRecords.id, record.id));
-    return { deleted: true };
+    return deleteOwnedScan(ctx.user.id, input.scanId, {
+      findOwnedScan: async (userId, scanId) => {
+        const [record] = await db.select({ id: scanRecords.id }).from(scanRecords).where(and(eq(scanRecords.userId, userId), eq(scanRecords.scanId, scanId))).limit(1);
+        return record;
+      },
+      deleteArtifactMetadata: async recordId => { await db.delete(scanArtifacts).where(eq(scanArtifacts.scanRecordId, recordId)); },
+      deleteScanMetadata: async recordId => { await db.delete(scanRecords).where(eq(scanRecords.id, recordId)); },
+    });
   }),
 
   deleteAll: protectedProcedure.input(z.object({ confirmation: z.literal("DELETE_ALL_RESEARCH_HISTORY") })).mutation(async ({ ctx }) => {
     const db = await getDb(); if (!db) throw new Error("Scan history database is unavailable.");
-    const records = await db.select({ id: scanRecords.id }).from(scanRecords).where(eq(scanRecords.userId, ctx.user.id));
-    for (const record of records) await db.delete(scanArtifacts).where(eq(scanArtifacts.scanRecordId, record.id));
-    await db.delete(scanRecords).where(eq(scanRecords.userId, ctx.user.id));
-    return { deletedCount: records.length };
+    return deleteAllOwnedScans(ctx.user.id, {
+      listOwnedScanIds: async userId => (await db.select({ id: scanRecords.id }).from(scanRecords).where(eq(scanRecords.userId, userId))).map(record => record.id),
+      deleteArtifactMetadata: async recordId => { await db.delete(scanArtifacts).where(eq(scanArtifacts.scanRecordId, recordId)); },
+      deleteAllScanMetadata: async userId => { await db.delete(scanRecords).where(eq(scanRecords.userId, userId)); },
+    });
   }),
 });
