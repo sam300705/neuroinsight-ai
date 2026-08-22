@@ -1,13 +1,12 @@
 # Open Release Gates
 
-The following items intentionally remain incomplete. They are retained as explicit gates because completing them without the stated evidence would create misleading medical-AI behavior.
+The public Mode A classifier is live as a strictly non-clinical, fixed-split **image-level** academic demonstration. It has a real calibrated model-confidence score, Grad-CAM attribution, PDF reporting, and consent-based derived-artifact history. The gates below remain open because enabling them without evidence would create misleading medical-AI behaviour.
 
-| Gate | Why it remains open | Required closure evidence |
+| Gate | Current status | Required closure evidence |
 |---|---|---|
-| Mode A model activation | Current classification source has unresolved provenance and lacks a patient-level evaluation split. | Provenance-approved source, locked patient-level split, calibration study, held-out/external performance record. |
-| Mode B model activation | Current model is a small selected-slice 2D smoke experiment, not full-volume validation. | Full-volume model and evaluation, uncertainty protocol, clinical-scope review, approved artifacts. |
-| Model confidence display | No calibrated model is approved. | Reliability evidence and an abstention threshold fixed before testing. |
-| Automatic report/history artifacts | Report and object-reference code is ready, but there is no approved model-enabled inference workflow. | Approved inference service that generates and persists real outputs end to end. |
-| Managed publish | The dashboard is publishable, but public model inference is intentionally absent. | User review of checkpoint and explicit use of the project interface’s Publish control. |
+| Mode A clinical / patient-level claim | **Permanently out of scope for the current release.** EXP-005 has no patient identifier basis and is not externally validated. | Separate patient/case-disjoint and external validation programme, clinical study, and applicable approvals. |
+| Mode B model activation | **Unavailable by design.** The old selected-slice 2D smoke work is not full-volume validation. | Full-volume model, case-disjoint held-out evaluation, uncertainty protocol, artifact verification, and separate release decision. |
+| Physical measurement and 3D geometry | **Unavailable.** A 2D classifier Grad-CAM cannot provide anatomy, spacing, size, or volume. | Validated volume mask plus verified spatial metadata and measurement evaluation. |
+| New model promotion | **Evidence-gated.** New local experiments must not replace EXP-005 automatically. | Audited data, predefined validation selection, locked-test result, export/ONNX agreement, and owner-approved promotion. |
 
-Until these gates close, NeuroInsight AI should remain an **academic research dashboard with honest unavailable-model states**, not a diagnostic or model-enabled service.
+> The current dashboard remains an academic research application. It must not be used to make medical decisions.

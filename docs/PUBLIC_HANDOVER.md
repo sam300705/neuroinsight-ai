@@ -47,9 +47,9 @@ The final regression run passed all of the following:
 
 | Layer | Result |
 |---|---|
-| Web tests | 21 passing tests |
+| Web tests | 24 passing tests |
 | FastAPI tests | 12 passing tests |
-| ML/data tests | 4 passing tests |
+| ML/data tests | 6 passing tests |
 | TypeScript check | Passed |
 | Production bundle | Passed; non-blocking JavaScript chunk-size warning recorded |
 | Browser checks | Corrupt upload, real Mode A inference, Hindi real inference, focused accessibility, cross-route WCAG 2 A/AA, and published-dashboard real inference all passed |
