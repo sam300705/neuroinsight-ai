@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 import uuid
 import os
+import logging
 from base64 import b64decode
 from contextlib import asynccontextmanager
 from typing import Protocol
@@ -16,6 +17,9 @@ from .offline_faq import answer_offline
 from .schemas import AnalysisMode, AnalysisResponse, ChatRequest, ChatResponse, Measurement, ModelInfo, ReportRequest
 from .reporting import build_report
 from .upload_validation import UploadValidationError, validate_upload
+
+
+logger = logging.getLogger(__name__)
 
 
 class ClassifierProtocol(Protocol):
@@ -189,7 +193,11 @@ async def report(request: ReportRequest):
         segmentation = b64decode(request.segmentation_png_base64, validate=True) if request.segmentation_png_base64 else None
     except Exception as exc:
         raise HTTPException(status_code=422, detail="Report image payload must be valid base64.") from exc
-    pdf = build_report(request.analysis, grad_cam, segmentation)
+    try:
+        pdf = build_report(request.analysis, grad_cam, segmentation)
+    except Exception as exc:
+        logger.error("report_generation_failed:%s", exc)
+        raise HTTPException(status_code=500, detail="The research report could not be generated.") from exc
     return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="neuroinsight-{request.analysis.scan_id}.pdf"'})
 
 
