@@ -1,5 +1,7 @@
 from io import BytesIO
 
+import base64
+
 from fastapi.testclient import TestClient
 import nibabel as nib
 import numpy as np
@@ -97,7 +99,7 @@ def test_offline_chat_refuses_prompt_injection_in_english_and_hindi():
 
 
 def test_pdf_report_declares_academic_scope_and_unavailable_outputs():
-    tiny_png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADElEQVR42mP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
+    tiny_png = base64.b64encode(png_bytes()).decode("ascii")
     response = client.post("/api/v1/report", json={
         "analysis": {
             "request_id": "test-request", "scan_id": "d1fd69b2-62fa-4cbf-bec2-73fe6d12a6fe", "mode": "segmentation", "status": "unavailable", "model_version": "unconfigured", "processing_time_ms": 4, "manual_review_recommended": True,
