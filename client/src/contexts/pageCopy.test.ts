@@ -37,4 +37,12 @@ describe("dashboard bilingual page copy", () => {
     }
     expect(copyFor("hi").results.saveTitle).toContain("आर्टिफैक्ट");
   });
+
+  it("reports the verified Mode A experimental status without overstating Mode B", () => {
+    expect(copyFor("en").home.modelTitle).toContain("Mode A");
+    expect(copyFor("en").home.modelDetail).toContain("Mode B segmentation remains unavailable");
+    expect(copyFor("en").performance.intro).toContain("EXP-005");
+    expect(copyFor("hi").home.modelTitle).toContain("मोड A");
+    expect(copyFor("hi").performance.intro).toContain("EXP-005");
+  });
 });
