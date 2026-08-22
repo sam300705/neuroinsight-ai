@@ -15,7 +15,7 @@ os.environ.setdefault(
 os.environ.setdefault("CLASSIFICATION_CALIBRATION_SHA256", "5a5527ad9f0c83c3f33d447262ed6216f18c3330ab14ec7eb00ed07ea8f4ff5d")
 os.environ.setdefault(
     "CORS_ALLOWED_ORIGINS",
-    "https://3000-ix9oexal674qfzqot8ods-4dc009ac.us3.manus.computer,http://localhost:3000,http://127.0.0.1:3000",
+    "https://neuroaiapp-gtbxy6cw.manus.space,http://localhost:3000,http://127.0.0.1:3000",
 )
 
 from neuroinsight_api.app import app
