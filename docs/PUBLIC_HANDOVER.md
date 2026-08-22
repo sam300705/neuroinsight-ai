@@ -18,7 +18,7 @@ Mode A is a real experimental 2D, four-class brain-MRI image classifier. It retu
 | PDF report | Verified | Derived research report, not a clinical report |
 | CORS | Verified | Allows only the published origin and localhost development origins |
 | Mode B segmentation | Intentionally unavailable | No validated full-volume model is deployed |
-| Private history re-download | Implemented, not live-session tested | Requires a signed-in account and must never store original uploads |
+| Private history re-download | Verified with a signed-in test session | Ownership-gated signed report retrieval; original uploads are never stored |
 
 ## Evidence and evaluation limits
 
@@ -66,7 +66,6 @@ When redeploying the Vercel backend, update both the dashboard inference base UR
 
 The following tasks are intentionally not presented as completed:
 
-1. Sign in through the secure dashboard flow and verify a saved Mode A result appears in History and downloads through its signed URL.
-2. Build and validate a genuinely full-volume, glioma-focused Mode B segmentation route before exposing masks, physical measurement, volume, or 3D geometry as real output.
+1. Build and validate a genuinely full-volume, glioma-focused Mode B segmentation route before exposing masks, physical measurement, volume, or 3D geometry as real output.
 
-Both gates exist to preserve privacy and avoid fabricating unvalidated medical-imaging behavior.
+The Mode B gate exists to avoid fabricating unvalidated medical-imaging behavior. The signed-in Mode A check used a lawful public demonstration image, saved only derived metadata/PDF/Grad-CAM artifacts, verified ownership-gated report retrieval through a fresh signed URL, and then removed the temporary record.

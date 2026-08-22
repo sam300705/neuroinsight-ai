@@ -38,6 +38,10 @@ The protected artifact lookup was further tightened in code to verify the reques
 
 The Hindi real-inference browser test passed after the real-result and protected-save UI states were localized. It switched the interface language, submitted the lawful public fixed-split image, and verified Hindi experimental-result and save-consent labels. The exact visible notice **“This system is not a medical diagnosis and must not replace a qualified radiologist.”** remained present as required.
 
+## 2026-08-22 — Authenticated derived-artifact history verification
+
+With the user signed in through the secure dashboard flow and explicit confirmation for the temporary test record, one lawful public fixed-split BDNeuro image completed the live Mode A path. The system saved anonymous result metadata, the server-generated PDF, and the real Grad-CAM overlay while explicitly confirming that the original upload was not stored. The History page listed both derived artifacts. The report action resolved only after the authenticated ownership check and opened a fresh signed CloudFront URL in the browser PDF viewer. The temporary test record was then deleted, leaving History empty. This proves the protected Mode A artifact workflow; it does not create or validate Mode B segmentation artifacts.
+
 ## 2026-08-22 — Published dashboard CORS and live inference check
 
 The dashboard was published at `https://neuroaiapp-gtbxy6cw.manus.space`. The Vercel backend was redeployed with that exact origin plus localhost development origins only. A preflight from the published origin succeeded and an unrelated origin was rejected without an allow-origin header. After the dashboard environment configuration was rebuilt, the saved real-inference browser test passed against the public dashboard. It rendered the real experimental Mode A result and protected-save consent control from the deployed external service. This is a live connectivity verification, not a claim of model correctness, diagnostic use, or authenticated history retrieval.
