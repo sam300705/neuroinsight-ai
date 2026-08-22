@@ -14,6 +14,7 @@
     "test:e2e:real-inference": "node scripts/verify-real-inference.mjs",
     "test:e2e:accessibility": "node scripts/verify-accessibility.mjs",
     "test:e2e:accessibility-routes": "node scripts/verify-route-accessibility.mjs",
+    "test:e2e:hindi-real-inference": "node scripts/verify-hindi-real-inference.mjs",
     "db:push": "drizzle-kit generate && drizzle-kit migrate"
   },
   "dependencies": {

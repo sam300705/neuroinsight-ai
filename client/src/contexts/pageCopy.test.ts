@@ -26,4 +26,15 @@ describe("dashboard bilingual page copy", () => {
     expect(copyFor("en").results.noProbability).toContain("medical probability");
     expect(copyFor("hi").results.noProbability).toContain("चिकित्सीय");
   });
+
+  it("localizes real experimental-result and derived-artifact persistence controls", () => {
+    for (const language of ["en", "hi"] as const) {
+      const results = copyFor(language).results;
+      expect(results.experimentalResult).not.toHaveLength(0);
+      expect(results.saveTitle).not.toHaveLength(0);
+      expect(results.saveDetail).not.toHaveLength(0);
+      expect(results.signInSave).not.toHaveLength(0);
+    }
+    expect(copyFor("hi").results.saveTitle).toContain("आर्टिफैक्ट");
+  });
 });
