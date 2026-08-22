@@ -19,8 +19,9 @@ def build_report(analysis: AnalysisResponse, grad_cam_png: bytes | None = None, 
     pdf.set_compression(False)
     pdf.set_auto_page_break(auto=True, margin=14)
     pdf.add_page()
+    content_width = pdf.w - pdf.l_margin - pdf.r_margin
     pdf.set_font("Helvetica", "B", 18); pdf.cell(0, 10, "NeuroInsight AI Research Report", ln=1)
-    pdf.set_font("Helvetica", "B", 11); pdf.set_text_color(150, 45, 10); pdf.multi_cell(0, 6, ACADEMIC_DISCLAIMER)
+    pdf.set_x(pdf.l_margin); pdf.set_font("Helvetica", "B", 11); pdf.set_text_color(150, 45, 10); pdf.multi_cell(content_width, 6, ACADEMIC_DISCLAIMER)
     pdf.set_text_color(0, 0, 0); pdf.ln(2)
     rows = [
         ("Scan UUID", analysis.scan_id), ("Timestamp (UTC)", datetime.now(UTC).isoformat()),
@@ -32,23 +33,24 @@ def build_report(analysis: AnalysisResponse, grad_cam_png: bytes | None = None, 
     pdf.set_font("Helvetica", "B", 12); pdf.cell(0, 8, "Analysis summary", ln=1)
     for label, value in rows:
         pdf.set_x(pdf.l_margin)
-        pdf.set_font("Helvetica", "B", 9); pdf.multi_cell(0, 5, f"{label}: {_safe_text(value)}")
+        pdf.set_font("Helvetica", "B", 9); pdf.multi_cell(content_width, 5, f"{label}: {_safe_text(value)}")
     pdf.ln(1); pdf.set_font("Helvetica", "B", 12); pdf.cell(0, 8, "Measurement", ln=1)
     measure = analysis.measurement
-    pdf.set_font("Helvetica", "", 9); pdf.multi_cell(0, 6, f"Kind: {measure.kind}. Value: {_safe_text(measure.value)} {_safe_text(measure.unit)}. Pixel count: {_safe_text(measure.pixel_count)}. Voxel count: {_safe_text(measure.voxel_count)}. Occupancy: {_safe_text(measure.occupancy_percent)}%. Metadata confirmed: {measure.metadata_confirmed}. Limitation: {measure.limitation}")
+    pdf.set_x(pdf.l_margin); pdf.set_font("Helvetica", "", 9); pdf.multi_cell(content_width, 6, f"Kind: {measure.kind}. Value: {_safe_text(measure.value)} {_safe_text(measure.unit)}. Pixel count: {_safe_text(measure.pixel_count)}. Voxel count: {_safe_text(measure.voxel_count)}. Occupancy: {_safe_text(measure.occupancy_percent)}%. Metadata confirmed: {measure.metadata_confirmed}. Limitation: {measure.limitation}")
     if analysis.mode.value == "segmentation":
-        pdf.set_text_color(90, 50, 150); pdf.set_font("Helvetica", "B", 9); pdf.multi_cell(0, 6, GLIOMA_SCOPE_DISCLAIMER); pdf.set_text_color(0, 0, 0)
+        pdf.set_x(pdf.l_margin); pdf.set_text_color(90, 50, 150); pdf.set_font("Helvetica", "B", 9); pdf.multi_cell(content_width, 6, GLIOMA_SCOPE_DISCLAIMER); pdf.set_text_color(0, 0, 0)
     pdf.set_font("Helvetica", "B", 12); pdf.cell(0, 8, "Warnings and technical limitations", ln=1)
     pdf.set_font("Helvetica", "", 9)
-    for warning in analysis.warnings + analysis.limitations: pdf.multi_cell(0, 5, f"- {warning}")
+    for warning in analysis.warnings + analysis.limitations:
+        pdf.set_x(pdf.l_margin); pdf.multi_cell(content_width, 5, f"- {warning}")
     if grad_cam_png:
         pdf.add_page(); pdf.set_font("Helvetica", "B", 12); pdf.cell(0, 8, "Grad-CAM attribution", ln=1)
-        pdf.set_font("Helvetica", "", 9); pdf.multi_cell(0, 6, GRAD_CAM_DISCLAIMER)
+        pdf.set_x(pdf.l_margin); pdf.set_font("Helvetica", "", 9); pdf.multi_cell(content_width, 6, GRAD_CAM_DISCLAIMER)
         with NamedTemporaryFile(suffix=".png") as temp:
             temp.write(grad_cam_png); temp.flush(); pdf.image(temp.name, w=160)
     if segmentation_png:
         pdf.add_page(); pdf.set_font("Helvetica", "B", 12); pdf.cell(0, 8, "Segmentation overlay", ln=1)
-        pdf.set_font("Helvetica", "", 9); pdf.multi_cell(0, 6, GLIOMA_SCOPE_DISCLAIMER)
+        pdf.set_x(pdf.l_margin); pdf.set_font("Helvetica", "", 9); pdf.multi_cell(content_width, 6, GLIOMA_SCOPE_DISCLAIMER)
         with NamedTemporaryFile(suffix=".png") as temp:
             temp.write(segmentation_png); temp.flush(); pdf.image(temp.name, w=160)
     output = pdf.output(dest="S")
