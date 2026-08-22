@@ -47,4 +47,10 @@ The container has no model weight files. A successful request to `/api/v1/analyz
 
 ## Publication boundary
 
+## Vercel academic-demo backend attempt
+
+An authorized Vercel preview of `backend/` was created from the private repository on 2026-08-22. The first build failed before serving any request because default PyTorch dependencies produced a **4,658.61 MB** Python function bundle, exceeding Vercel’s reported **500 MB** maximum. This is a build limitation, not a successful inference deployment. The Vercel-specific requirements manifest now pins the official CPU-only PyTorch wheels (`torch==2.5.1+cpu` and `torchvision==0.20.1+cpu`) to reduce the bundle. A new preview must build successfully and pass health, readiness, CORS, corrupt-upload, and real non-sensitive demonstration-image checks before its URL can be configured in the dashboard.
+
+The selected experimental checkpoint remains outside Git and raw MRI datasets are not uploaded. The Vercel entry point can retrieve only the published checkpoint and calibration JSON through HTTPS and checks their fixed SHA-256 values before loading. It preserves the academic, non-diagnostic boundary in every response.
+
 To publish the current managed dashboard, create and review a checkpoint, then use the project interface’s **Publish** control. Publication does not authorize model activation. The public dashboard must retain its unavailable-model state until the separate evidence gates are closed.
