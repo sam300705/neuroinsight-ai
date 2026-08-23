@@ -20,7 +20,7 @@ The public dashboard is <https://neuroaiapp-gtbxy6cw.manus.space>. Its CORS-rest
 
 ## Verified evidence
 
-EXP-005 achieved held-out fixed-split **image-level** accuracy `0.8099`, macro-F1 `0.8080`, and weighted-F1 `0.8110`. These results are not patient-independent, external, clinical, diagnostic, or medical-probability evidence. The latest recorded regression evidence is **29** Vitest tests, **12** FastAPI tests, **8** ML/data tests, passing TypeScript/build checks, passing browser inference checks, a user-approved signed-in derived-artifact retrieval check, and unit coverage for cross-user download denial plus ownership-scoped metadata deletion. See `docs/TEST_REPORT.md` for methods and boundaries.
+EXP-005 achieved held-out fixed-split **image-level** accuracy `0.8099`, macro-F1 `0.8080`, and weighted-F1 `0.8110`. These results are not patient-independent, external, clinical, diagnostic, or medical-probability evidence. The latest recorded regression evidence is **34** Vitest tests, **15** FastAPI tests, and **8** ML/data tests; passing TypeScript/build checks; a clean high-severity production dependency audit; passing browser inference checks; a user-approved signed-in derived-artifact retrieval check; ownership-scoped artifact tests; server-side rejection of direct Mode B persistence/report requests; and browser/server upload safety checks. See `docs/TEST_REPORT.md` for methods and boundaries.
 
 ## Current research work
 
