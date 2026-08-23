@@ -12,7 +12,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
-from .constants import ACADEMIC_DISCLAIMER, GLIOMA_SCOPE_DISCLAIMER, MODEL_UNAVAILABLE_MESSAGE
+from .constants import ACADEMIC_DISCLAIMER, GLIOMA_SCOPE_DISCLAIMER, MAX_MULTIPART_REQUEST_BYTES, MAX_UPLOAD_BYTES, MODEL_UNAVAILABLE_MESSAGE
 from .offline_faq import answer_offline
 from .schemas import AnalysisMode, AnalysisResponse, ChatRequest, ChatResponse, Measurement, ModelInfo, ReportRequest
 from .reporting import build_report
@@ -111,6 +111,24 @@ def _classification_result(request: Request, classifier: ClassifierProtocol, pay
     )
 
 
+async def _read_bounded_upload(request: Request, file: UploadFile) -> bytes:
+    declared_length = request.headers.get("content-length")
+    if declared_length:
+        try:
+            request_size = int(declared_length)
+        except ValueError as exc:
+            raise UploadValidationError("The request Content-Length header is invalid.") from exc
+        if request_size < 0 or request_size > MAX_MULTIPART_REQUEST_BYTES:
+            raise UploadValidationError(f"The upload request exceeds the {MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit.")
+    try:
+        payload = await file.read(MAX_UPLOAD_BYTES + 1)
+    finally:
+        await file.close()
+    if len(payload) > MAX_UPLOAD_BYTES:
+        raise UploadValidationError(f"The upload exceeds the {MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit.")
+    return payload
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "neuroinsight-inference"}
@@ -152,7 +170,7 @@ async def analyze(
     file: UploadFile = File(...),
 ):
     started_at = time.perf_counter()
-    payload = await file.read()
+    payload = await _read_bounded_upload(request, file)
     validate_upload(payload, file.filename or "upload", file.content_type, mode)
     if mode is AnalysisMode.CLASSIFICATION and (classifier := getattr(app.state, "classifier", None)):
         return _classification_result(request, classifier, payload, started_at)
@@ -162,7 +180,7 @@ async def analyze(
 @app.post("/api/v1/classify", response_model=AnalysisResponse)
 async def classify(request: Request, file: UploadFile = File(...)):
     started_at = time.perf_counter()
-    payload = await file.read()
+    payload = await _read_bounded_upload(request, file)
     validate_upload(payload, file.filename or "upload", file.content_type, AnalysisMode.CLASSIFICATION)
     if classifier := getattr(app.state, "classifier", None):
         return _classification_result(request, classifier, payload, started_at)
@@ -172,7 +190,7 @@ async def classify(request: Request, file: UploadFile = File(...)):
 @app.post("/api/v1/segment", response_model=AnalysisResponse)
 async def segment(request: Request, file: UploadFile = File(...)):
     started_at = time.perf_counter()
-    payload = await file.read()
+    payload = await _read_bounded_upload(request, file)
     validate_upload(payload, file.filename or "upload", file.content_type, AnalysisMode.SEGMENTATION)
     return _unavailable_result(request, AnalysisMode.SEGMENTATION, started_at)
 
@@ -188,13 +206,16 @@ async def chat(request: ChatRequest):
 
 @app.post("/api/v1/report")
 async def report(request: ReportRequest):
+    if request.analysis.mode is not AnalysisMode.CLASSIFICATION:
+        raise HTTPException(status_code=422, detail="Mode B reports remain unavailable until a verified full-volume model is released.")
+    if request.segmentation_png_base64:
+        raise HTTPException(status_code=422, detail="Segmentation overlays cannot be included while Mode B is unavailable.")
     try:
         grad_cam = b64decode(request.grad_cam_png_base64, validate=True) if request.grad_cam_png_base64 else None
-        segmentation = b64decode(request.segmentation_png_base64, validate=True) if request.segmentation_png_base64 else None
     except Exception as exc:
         raise HTTPException(status_code=422, detail="Report image payload must be valid base64.") from exc
     try:
-        pdf = build_report(request.analysis, grad_cam, segmentation)
+        pdf = build_report(request.analysis, grad_cam)
     except Exception as exc:
         logger.error("report_generation_failed:%s", exc)
         raise HTTPException(status_code=500, detail="The research report could not be generated.") from exc

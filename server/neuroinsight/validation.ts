@@ -1,6 +1,12 @@
 import { z } from "zod";
 
-export const artifactTypeSchema = z.enum(["report", "grad_cam", "segmentation_mask", "three_dimensional"]);
+/**
+ * Only deployed Mode A derived artifacts may enter protected history.
+ * Mode B remains unavailable until a full-volume model has passed its separate
+ * release gate, so clients cannot manufacture segmentation or 3D artifacts by
+ * calling the authenticated API directly.
+ */
+export const artifactTypeSchema = z.enum(["report", "grad_cam"]);
 export const measurementSchema = z.object({
   kind: z.enum(["unavailable", "relative_area", "physical_area", "physical_volume"]),
   pixelCount: z.number().int().nonnegative().optional(),
@@ -14,7 +20,7 @@ export const measurementSchema = z.object({
 
 export const scanResultSchema = z.object({
   scanId: z.string().uuid(),
-  mode: z.enum(["classification", "segmentation"]),
+  mode: z.literal("classification"),
   status: z.enum(["complete", "low_confidence", "incompatible", "partial", "unavailable"]),
   modelVersion: z.string().min(1).max(128),
   processingTimeMs: z.number().int().nonnegative().max(30 * 60 * 1000),
@@ -44,4 +50,3 @@ export function validateArtifactPayload(base64: string, contentType: string) {
   if (contentType === "image/png" && signature !== "89504e470d0a1a0a") throw new Error("Image payload is not a valid PNG header.");
   return bytes;
 }
-

@@ -4,6 +4,7 @@ import type { AnalysisMode } from "@shared/neuroinsight";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 export type LocalFileCheck = { valid: boolean; messages: string[]; warnings: string[]; previewUrl?: string };
+export const MAX_CLASSIFICATION_IMAGE_PIXELS = 12_000_000;
 
 export function validateLocalFile(file: File, mode: AnalysisMode): LocalFileCheck {
   const extension = file.name.toLowerCase().split(".").slice(1).join("."); const maxBytes = 50 * 1024 * 1024; const expected = mode === "classification" ? ["png", "jpg", "jpeg"] : ["nii", "nii.gz"]; const acceptableMime = mode === "classification" ? ["image/png", "image/jpeg"] : ["application/x-nifti", "application/nifti", "application/gzip", ""];
@@ -20,13 +21,17 @@ export function imageQualityWarnings(width: number, height: number) {
   const warnings: string[] = []; if (Math.min(width, height) < 128) warnings.push("Input-quality warning: image resolution is below 128 pixels on one axis; manual research review is recommended."); if (Math.max(width, height) / Math.max(Math.min(width, height), 1) > 2.5) warnings.push("Input-quality warning: the image aspect ratio is unusual for the expected 2D research input."); return warnings;
 }
 
+export function imagePixelSafetyError(width: number, height: number) {
+  return width * height > MAX_CLASSIFICATION_IMAGE_PIXELS ? "The selected image exceeds the 12-megapixel safety limit for this research classifier." : null;
+}
+
 export async function validateFileContent(file: File, mode: AnalysisMode): Promise<{ messages: string[]; warnings: string[] }> {
   const header = new Uint8Array(await file.slice(0, 512).arrayBuffer());
   if (mode === "segmentation") return isNiftiHeader(header, file.name.toLowerCase().endsWith(".gz")) ? { messages: [], warnings: ["Input-quality checks for modality completeness, voxel spacing, orientation, and out-of-distribution appearance require the validated server-side volume pipeline."] } : { messages: ["The selected volume does not have a compatible NIfTI or gzip header. Choose an uncorrupted .nii or .nii.gz file."], warnings: [] };
   const isPng = header.length >= 8 && [137, 80, 78, 71, 13, 10, 26, 10].every((value, index) => header[index] === value); const isJpeg = header.length >= 3 && header[0] === 255 && header[1] === 216 && header[2] === 255;
   if (!isPng && !isJpeg) return { messages: ["The selected image does not have a valid PNG or JPEG signature."], warnings: [] };
   if (typeof createImageBitmap === "undefined") return { messages: [], warnings: ["Image decode quality checks are unavailable in this browser; manual research review is recommended."] };
-  try { const bitmap = await createImageBitmap(file); const warnings = imageQualityWarnings(bitmap.width, bitmap.height); bitmap.close(); return { messages: [], warnings }; } catch { return { messages: ["The selected image could not be decoded and may be corrupted."], warnings: [] }; }
+  try { const bitmap = await createImageBitmap(file); const safetyError = imagePixelSafetyError(bitmap.width, bitmap.height); const warnings = imageQualityWarnings(bitmap.width, bitmap.height); bitmap.close(); return { messages: safetyError ? [safetyError] : [], warnings }; } catch { return { messages: ["The selected image could not be decoded and may be corrupted."], warnings: [] }; }
 }
 
 export function UploadDropzone({ mode, onSelect }: { mode: AnalysisMode; onSelect: (file: File, check: LocalFileCheck) => void }) {

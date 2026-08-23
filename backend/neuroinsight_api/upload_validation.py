@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import gzip
 import io
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
 import nibabel as nib
 from PIL import Image, UnidentifiedImageError
 
-from .constants import MAX_UPLOAD_BYTES
+from .constants import MAX_IMAGE_PIXELS, MAX_UPLOAD_BYTES
 from .schemas import AnalysisMode
 
 
@@ -34,11 +35,20 @@ def _validate_image(payload: bytes, filename: str, declared_type: str) -> Valida
     if Path(filename).suffix.lower() not in {".png", ".jpg", ".jpeg"}:
         raise UploadValidationError("Classification accepts PNG or JPEG files only.")
     try:
-        with Image.open(io.BytesIO(payload)) as image:
-            image.verify()
-        with Image.open(io.BytesIO(payload)) as image:
-            actual = image.format
-    except (UnidentifiedImageError, OSError) as exc:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(io.BytesIO(payload)) as image:
+                pixel_count = image.width * image.height
+                if pixel_count > MAX_IMAGE_PIXELS:
+                    raise UploadValidationError(f"The image exceeds the {MAX_IMAGE_PIXELS // 1_000_000}-megapixel safety limit.")
+                if image.mode not in {"L", "LA", "RGB", "RGBA", "P"}:
+                    raise UploadValidationError("The image uses an unsupported channel format for classification.")
+                image.verify()
+            with Image.open(io.BytesIO(payload)) as image:
+                actual = image.format
+    except UploadValidationError:
+        raise
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
         raise UploadValidationError("The uploaded image is corrupted or not a supported image file.") from exc
     if actual not in {"PNG", "JPEG"}:
         raise UploadValidationError("File content does not match a PNG or JPEG image.")
@@ -81,4 +91,3 @@ def validate_upload(payload: bytes, filename: str, declared_type: str | None, mo
     if mode is AnalysisMode.CLASSIFICATION:
         return _validate_image(payload, safe_name, content_type)
     return _validate_nifti(payload, safe_name, content_type)
-

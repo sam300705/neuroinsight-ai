@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { imageQualityWarnings, isNiftiHeader, validateLocalFile } from "./UploadDropzone";
+import { imagePixelSafetyError, imageQualityWarnings, isNiftiHeader, validateLocalFile } from "./UploadDropzone";
 
 function fileLike(name: string, type: string, size: number) { return { name, type, size } as File; }
 
@@ -26,5 +26,8 @@ describe("validateLocalFile", () => {
   });
   it("emits non-diagnostic manual-review warnings for low-resolution or unusual-aspect-ratio images", () => {
     expect(imageQualityWarnings(96, 80).join(" ")).toContain("manual research review"); expect(imageQualityWarnings(1024, 200).join(" ")).toContain("aspect ratio");
+  });
+  it("rejects images that exceed the server-aligned 12-megapixel safety limit", () => {
+    expect(imagePixelSafetyError(4000, 4000)).toContain("12-megapixel safety limit"); expect(imagePixelSafetyError(2000, 2000)).toBeNull();
   });
 });

@@ -5,9 +5,12 @@ import base64
 from fastapi.testclient import TestClient
 import nibabel as nib
 import numpy as np
+import pytest
 from PIL import Image
 
 from neuroinsight_api.app import app
+from neuroinsight_api.schemas import AnalysisMode
+from neuroinsight_api.upload_validation import UploadValidationError, validate_upload
 
 
 client = TestClient(app)
@@ -17,6 +20,13 @@ def png_bytes() -> bytes:
     image = Image.new("L", (8, 8), color=127)
     output = BytesIO()
     image.save(output, format="PNG")
+    return output.getvalue()
+
+
+def cmyk_jpeg_bytes() -> bytes:
+    image = Image.new("CMYK", (8, 8), color=(0, 0, 0, 0))
+    output = BytesIO()
+    image.save(output, format="JPEG")
     return output.getvalue()
 
 
@@ -70,6 +80,33 @@ def test_classify_rejects_wrong_extension_and_corrupted_image():
     assert corrupt.status_code == 422
 
 
+def test_classify_rejects_oversized_declared_requests_and_unsupported_channels():
+    oversized = client.post(
+        "/api/v1/classify",
+        files={"file": ("scan.png", png_bytes(), "image/png")},
+        headers={"content-length": str(52 * 1024 * 1024)},
+    )
+    cmyk = client.post(
+        "/api/v1/classify",
+        files={"file": ("scan.jpg", cmyk_jpeg_bytes(), "image/jpeg")},
+    )
+    assert oversized.status_code == 422
+    assert "exceeds the 50 MB limit" in oversized.json()["detail"]
+    assert cmyk.status_code == 422
+    assert "unsupported channel format" in cmyk.json()["detail"]
+
+
+def test_image_pixel_budget_rejects_decompression_bomb_sized_dimensions(monkeypatch):
+    from neuroinsight_api import upload_validation
+
+    monkeypatch.setattr(upload_validation, "MAX_IMAGE_PIXELS", 16)
+    image = Image.new("L", (5, 5), color=127)
+    output = BytesIO()
+    image.save(output, format="PNG")
+    with pytest.raises(UploadValidationError, match="megapixel safety limit"):
+        validate_upload(output.getvalue(), "scan.png", "image/png", AnalysisMode.CLASSIFICATION)
+
+
 def test_segment_accepts_a_valid_nifti_then_returns_model_unavailable():
     response = client.post(
         "/api/v1/segment",
@@ -98,25 +135,39 @@ def test_offline_chat_refuses_prompt_injection_in_english_and_hindi():
     assert "प्रकट" in hindi.json()["answer"]
 
 
-def test_pdf_report_declares_academic_scope_and_unavailable_outputs():
+def test_classification_pdf_report_declares_academic_scope_and_unavailable_measurements():
     tiny_png = base64.b64encode(png_bytes()).decode("ascii")
     response = client.post("/api/v1/report", json={
         "analysis": {
-            "request_id": "test-request", "scan_id": "d1fd69b2-62fa-4cbf-bec2-73fe6d12a6fe", "mode": "segmentation", "status": "unavailable", "model_version": "unconfigured", "processing_time_ms": 4, "manual_review_recommended": True,
-            "measurement": {"kind": "unavailable", "metadata_confirmed": False, "limitation": "No mask was generated."}, "warnings": ["No verified model artifact is configured."], "limitations": ["Academic and research use only."],
-        }, "grad_cam_png_base64": tiny_png, "segmentation_png_base64": tiny_png,
+            "request_id": "test-request", "scan_id": "d1fd69b2-62fa-4cbf-bec2-73fe6d12a6fe", "mode": "classification", "status": "unavailable", "model_version": "unconfigured", "processing_time_ms": 4, "manual_review_recommended": True,
+            "measurement": {"kind": "unavailable", "metadata_confirmed": False, "limitation": "Classification produces no segmentation mask or physical measurement."}, "warnings": ["No verified model artifact is configured."], "limitations": ["Academic and research use only."],
+        }, "grad_cam_png_base64": tiny_png,
     })
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/pdf")
     assert response.content.startswith(b"%PDF")
     reader = PdfReader(BytesIO(response.content))
     text = "\n".join(page.extract_text() or "" for page in reader.pages)
-    assert len(reader.pages) == 3
+    assert len(reader.pages) == 2
     assert "Timestamp (UTC)" in text
     assert "Manual review" in text
     assert "Academic and research use" in text
     assert "Grad-CAM attribution" in text
-    assert "Segmentation overlay" in text
+
+
+def test_report_rejects_unavailable_mode_b_and_synthetic_segmentation_overlays():
+    analysis = {
+        "request_id": "test-request", "scan_id": "d1fd69b2-62fa-4cbf-bec2-73fe6d12a6fe", "mode": "segmentation", "status": "unavailable", "model_version": "unconfigured", "processing_time_ms": 4, "manual_review_recommended": True,
+        "measurement": {"kind": "unavailable", "metadata_confirmed": False, "limitation": "No mask was generated."}, "warnings": ["No verified model artifact is configured."], "limitations": ["Academic and research use only."],
+    }
+    mode_b = client.post("/api/v1/report", json={"analysis": analysis})
+    assert mode_b.status_code == 422
+    assert "Mode B reports remain unavailable" in mode_b.json()["detail"]
+
+    classification = {**analysis, "mode": "classification"}
+    synthetic_overlay = client.post("/api/v1/report", json={"analysis": classification, "segmentation_png_base64": base64.b64encode(png_bytes()).decode("ascii")})
+    assert synthetic_overlay.status_code == 422
+    assert "Segmentation overlays cannot be included" in synthetic_overlay.json()["detail"]
 from io import BytesIO
 
 from pypdf import PdfReader

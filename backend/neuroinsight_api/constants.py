@@ -19,4 +19,8 @@ MODEL_UNAVAILABLE_MESSAGE = (
 )
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
-
+# Multipart framing adds a small amount of overhead beyond the uploaded file.
+MAX_MULTIPART_REQUEST_BYTES = MAX_UPLOAD_BYTES + 1024 * 1024
+# A 12-megapixel RGB image already expands to roughly 36 MB before inference
+# intermediates. MRI classification inputs are normally far smaller.
+MAX_IMAGE_PIXELS = 12_000_000
