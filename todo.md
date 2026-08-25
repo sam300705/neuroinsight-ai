@@ -98,3 +98,4 @@
 - [x] Add and test a fail-closed same-origin CSRF guard for cookie-authenticated tRPC mutations while preserving legitimate same-origin and local development requests. (Four unit tests pass.)
 - [x] Sanitize and length-limit inference request IDs, preserve a safe generated correlation ID in responses, and add regression coverage for malformed or oversized values. (FastAPI now accepts a 128-character safe token pattern or generates a UUID; regression test passes.)
 - [x] Add privacy, acceptable-use, model-card, data-lifecycle, operations, threat-model, and manual-gates documentation that accurately separates implemented controls from owner/legal/platform requirements. (Added public responsible-use page plus `MANUAL_GATES.md` and six scoped engineering documents.)
+- [ ] Publish owner-approved commit `ee2d3f6` and verify the live dashboard, authentication boundary, real Mode A integration, and Mode B disabled state after the managed deployment completes.
