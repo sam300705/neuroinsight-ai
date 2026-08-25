@@ -15,7 +15,7 @@ export const scansRouter = router({
     const artifacts = records.length
       ? await db.select().from(scanArtifacts).where(inArray(scanArtifacts.scanRecordId, records.map(record => record.id)))
       : [];
-    return records.map(record => ({ ...record, confidenceScore: record.confidenceScore === null ? null : Number(record.confidenceScore), calibrated: Boolean(record.calibrated), manualReviewRecommended: Boolean(record.manualReviewRecommended), measurement: JSON.parse(record.measurementJson), warnings: JSON.parse(record.warningsJson), artifacts: artifacts.filter(artifact => artifact.scanRecordId === record.id) }));
+    return records.map(record => ({ ...record, confidenceScore: record.confidenceScore === null ? null : Number(record.confidenceScore), calibrated: Boolean(record.calibrated), manualReviewRecommended: Boolean(record.manualReviewRecommended), measurement: JSON.parse(record.measurementJson), warnings: JSON.parse(record.warningsJson), artifacts: artifacts.filter(artifact => artifact.scanRecordId === record.id).map(artifact => ({ id: artifact.id, artifactType: artifact.artifactType, contentType: artifact.contentType, createdAt: artifact.createdAt })) }));
   }),
 
   saveResult: protectedProcedure.input(scanResultSchema).mutation(async ({ ctx, input }) => {
@@ -31,11 +31,11 @@ export const scansRouter = router({
     const [record] = await db.select().from(scanRecords).where(and(eq(scanRecords.userId, ctx.user.id), eq(scanRecords.scanId, input.scanId))).limit(1);
     if (!record) throw new Error("Scan record was not found for this user.");
     const [existing] = await db.select().from(scanArtifacts).where(and(eq(scanArtifacts.scanRecordId, record.id), eq(scanArtifacts.artifactType, input.artifactType))).limit(1);
-    if (existing) return { key: existing.storageKey, url: existing.storageUrl, contentType: existing.contentType, existing: true };
+    if (existing) return { artifactType: existing.artifactType, contentType: existing.contentType, existing: true };
     const bytes = validateArtifactPayload(input.base64, input.contentType);
     const stored = await storagePut(`neuroinsight/${ctx.user.id}/${input.scanId}/${input.artifactType}-${input.fileName}`, bytes, input.contentType);
-    await db.insert(scanArtifacts).values({ scanRecordId: record.id, artifactType: input.artifactType, storageKey: stored.key, storageUrl: stored.url, contentType: input.contentType });
-    return { ...stored, existing: false };
+    await db.insert(scanArtifacts).values({ scanRecordId: record.id, artifactType: input.artifactType, storageKey: stored.key, storageUrl: "ownership-scoped-download-only", contentType: input.contentType });
+    return { artifactType: input.artifactType, contentType: input.contentType, existing: false };
   }),
 
   getArtifactDownload: protectedProcedure.input(z.object({ artifactId: z.number().int().positive() })).query(async ({ ctx, input }) => {

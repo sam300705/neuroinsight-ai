@@ -4,7 +4,6 @@ import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
-import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { applyHttpSecurityHeaders, HEADERS_TIMEOUT_MS, KEEP_ALIVE_TIMEOUT_MS, MAX_TRPC_BODY_SIZE, REQUEST_TIMEOUT_MS } from "./httpSecurity";
@@ -41,7 +40,6 @@ async function startServer() {
   // consented derived PDF/Grad-CAM artifacts, whose server-side validator caps decoded bytes.
   app.use(express.json({ limit: MAX_TRPC_BODY_SIZE }));
   app.use(express.urlencoded({ limit: MAX_TRPC_BODY_SIZE, extended: true }));
-  registerStorageProxy(app);
   registerOAuthRoutes(app);
   // tRPC API
   app.use(
