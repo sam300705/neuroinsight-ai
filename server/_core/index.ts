@@ -4,6 +4,7 @@ import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
+import { csrfSameOriginGuard } from "./csrf";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { applyHttpSecurityHeaders, HEADERS_TIMEOUT_MS, KEEP_ALIVE_TIMEOUT_MS, MAX_TRPC_BODY_SIZE, REQUEST_TIMEOUT_MS } from "./httpSecurity";
@@ -41,6 +42,7 @@ async function startServer() {
   app.use(express.json({ limit: MAX_TRPC_BODY_SIZE }));
   app.use(express.urlencoded({ limit: MAX_TRPC_BODY_SIZE, extended: true }));
   registerOAuthRoutes(app);
+  app.use("/api/trpc", csrfSameOriginGuard);
   // tRPC API
   app.use(
     "/api/trpc",

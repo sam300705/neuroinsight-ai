@@ -41,6 +41,17 @@ def test_health_and_model_info_are_honest_about_model_state():
     assert all(item["status"] == "unavailable" for item in client.get("/api/v1/model-info").json())
 
 
+def test_request_id_is_bounded_and_sanitized():
+    accepted = client.get("/health", headers={"x-request-id": "research-run_2026.08"})
+    assert accepted.headers["x-request-id"] == "research-run_2026.08"
+
+    oversized = "x" * 129
+    replaced = client.get("/health", headers={"x-request-id": oversized})
+    assert replaced.status_code == 200
+    assert replaced.headers["x-request-id"] != oversized
+    assert len(replaced.headers["x-request-id"]) <= 128
+
+
 def test_validation_service_allows_only_configured_dashboard_origins():
     response = client.options(
         "/api/v1/analyze",

@@ -4,6 +4,7 @@ import time
 import uuid
 import os
 import logging
+import re
 from base64 import b64decode
 from contextlib import asynccontextmanager
 from typing import Protocol
@@ -20,6 +21,7 @@ from .upload_validation import UploadValidationError, validate_upload
 
 
 logger = logging.getLogger(__name__)
+REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 
 class ClassifierProtocol(Protocol):
@@ -60,7 +62,9 @@ app.add_middleware(
 
 @app.middleware("http")
 async def request_id_middleware(request: Request, call_next):
-    request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
+    supplied_id = request.headers.get("x-request-id")
+    request_id = supplied_id if supplied_id and REQUEST_ID_PATTERN.fullmatch(supplied_id) else str(uuid.uuid4())
+    request.state.request_id = request_id
     response = await call_next(request)
     response.headers["x-request-id"] = request_id
     return response
@@ -68,12 +72,12 @@ async def request_id_middleware(request: Request, call_next):
 
 @app.exception_handler(UploadValidationError)
 async def validation_error_handler(request: Request, exc: UploadValidationError):
-    return JSONResponse(status_code=422, content={"request_id": request.headers.get("x-request-id"), "detail": str(exc)})
+    return JSONResponse(status_code=422, content={"request_id": getattr(request.state, "request_id", None), "detail": str(exc)})
 
 
 def _unavailable_result(request: Request, mode: AnalysisMode, started_at: float) -> AnalysisResponse:
     return AnalysisResponse(
-        request_id=request.headers.get("x-request-id", "unknown"),
+        request_id=getattr(request.state, "request_id", "unknown"),
         scan_id=str(uuid.uuid4()),
         mode=mode,
         status="unavailable",
@@ -93,7 +97,7 @@ def _unavailable_result(request: Request, mode: AnalysisMode, started_at: float)
 def _classification_result(request: Request, classifier: ClassifierProtocol, payload: bytes, started_at: float) -> AnalysisResponse:
     prediction = classifier.predict(payload)
     return AnalysisResponse(
-        request_id=request.headers.get("x-request-id", "unknown"),
+        request_id=getattr(request.state, "request_id", "unknown"),
         scan_id=str(uuid.uuid4()),
         mode=AnalysisMode.CLASSIFICATION,
         status=prediction.status,

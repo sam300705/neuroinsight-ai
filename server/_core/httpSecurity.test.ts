@@ -15,5 +15,8 @@ describe("HTTP security headers", () => {
     const headers = new Map<string, string>();
     applyHttpSecurityHeaders({ setHeader: (name, value) => { headers.set(name, String(value)); return undefined; } }, true);
     expect(headers.get("Strict-Transport-Security")).toContain("max-age=31536000");
+    expect(headers.get("Content-Security-Policy")).toContain("default-src 'self'");
+    expect(headers.get("Content-Security-Policy")).toContain("object-src 'none'");
+    expect(headers.get("Content-Security-Policy")).toContain("frame-ancestors 'none'");
   });
 });
