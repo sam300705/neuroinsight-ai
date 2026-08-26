@@ -13,14 +13,14 @@
 | Model version | **EXP-005** | ResNet50 head-only model using BDNeuro-MRI v7. |
 | Calibration and abstention | **Available** | Validation-only temperature scaling (`T=0.689875`) and a `0.55` abstention threshold; the displayed score is not a medical probability. |
 | Grad-CAM and PDF | **Available** | Both are generated from real Mode A inference; Grad-CAM is attribution, not segmentation. |
-| Private derived-artifact history | **Verified** | With consent, saves anonymous metadata plus derived PDF/Grad-CAM only; ownership-gated re-download was verified. |
+| Private derived-artifact history | **Verified** | With consent, saves account-linked pseudonymous metadata plus derived Mode A PDF/Grad-CAM only; each retrieval receives a fresh ownership-gated URL. |
 | Mode B segmentation | **Intentionally unavailable** | No full-volume model with defensible held-out validation is deployed. |
 
 The public dashboard is <https://neuroaiapp-gtbxy6cw.manus.space>. Its CORS-restricted ONNX inference service is documented in `docs/DEPLOYMENT.md` and `docs/PUBLIC_HANDOVER.md`.
 
 ## Verified evidence
 
-EXP-005 achieved held-out fixed-split **image-level** accuracy `0.8099`, macro-F1 `0.8080`, and weighted-F1 `0.8110`. These results are not patient-independent, external, clinical, diagnostic, or medical-probability evidence. The latest recorded regression evidence is **41** Vitest tests, **21** FastAPI tests, and **8** ML/data tests; passing TypeScript/build checks; a clean high-severity production dependency audit; passing browser inference checks; ownership-scoped history/artifact constraints and cursor pagination; a user-approved signed-in derived-artifact retrieval check; server-side rejection of direct Mode B persistence/report requests; bounded public-demo requests; and browser/server upload safety checks. See `docs/TEST_REPORT.md` for methods and boundaries.
+EXP-005 achieved held-out fixed-split **image-level** accuracy `0.8099`, macro-F1 `0.8080`, and weighted-F1 `0.8110`. These results are not patient-independent, external, clinical, diagnostic, or medical-probability evidence. The latest recorded regression evidence is **42** Vitest tests, **21** FastAPI tests, and **8** ML/data tests; passing TypeScript/build checks; a clean high-severity production dependency audit; passing browser inference checks; ownership-scoped history/artifact constraints and cursor pagination; a user-approved signed-in derived-artifact retrieval check; server-side rejection of direct Mode B persistence/report requests; bounded public-demo requests; and browser/server upload safety checks. See `docs/TEST_REPORT.md` for methods and boundaries.
 
 ## Current research work
 
