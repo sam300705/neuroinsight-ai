@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse, Response
 
 from .constants import ACADEMIC_DISCLAIMER, GLIOMA_SCOPE_DISCLAIMER, MAX_MULTIPART_REQUEST_BYTES, MAX_UPLOAD_BYTES, MODEL_UNAVAILABLE_MESSAGE
 from .offline_faq import answer_offline
+from .rate_limit import FixedWindowRateLimiter
 from .schemas import AnalysisMode, AnalysisResponse, ChatRequest, ChatResponse, Measurement, ModelInfo, ReportRequest
 from .reporting import build_report
 from .upload_validation import UploadValidationError, validate_upload
@@ -22,6 +23,8 @@ from .upload_validation import UploadValidationError, validate_upload
 
 logger = logging.getLogger(__name__)
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+public_request_limiter = FixedWindowRateLimiter(window_seconds=60, max_requests=20)
+limited_paths = {"/api/v1/analyze", "/api/v1/classify", "/api/v1/segment", "/api/v1/report"}
 
 
 class ClassifierProtocol(Protocol):
@@ -68,6 +71,22 @@ async def request_id_middleware(request: Request, call_next):
     response = await call_next(request)
     response.headers["x-request-id"] = request_id
     return response
+
+
+@app.middleware("http")
+async def public_demo_rate_limit_middleware(request: Request, call_next):
+    if request.method == "POST" and request.url.path in limited_paths:
+        client_host = request.client.host if request.client else "unknown"
+        allowed, retry_after = public_request_limiter.allow(f"{request.url.path}:{client_host}")
+        if not allowed:
+            request_id = getattr(request.state, "request_id", str(uuid.uuid4()))
+            request.state.request_id = request_id
+            return JSONResponse(
+                status_code=429,
+                content={"request_id": request_id, "detail": "Public demo request limit reached. Please retry later."},
+                headers={"Retry-After": str(retry_after), "x-request-id": request_id},
+            )
+    return await call_next(request)
 
 
 @app.exception_handler(UploadValidationError)

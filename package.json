@@ -9,6 +9,7 @@
     "start": "NODE_ENV=production node dist/index.js",
     "check": "tsc --noEmit",
     "format": "prettier --write .",
+    "check:bundle": "node scripts/check-bundle-budget.mjs",
     "test": "vitest run",
     "test:e2e:corrupt-upload": "node scripts/verify-corrupt-upload.mjs",
     "test:e2e:real-inference": "node scripts/verify-real-inference.mjs",

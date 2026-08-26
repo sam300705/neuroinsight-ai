@@ -31,6 +31,8 @@ jobs:
       - run: pnpm check
       - run: pnpm test
       - run: pnpm build
+      - run: pnpm check:bundle
+      - run: pnpm audit --prod --audit-level=high
       - name: Block generated caches, local secrets, and raw research artifacts
         run: |
           ! git ls-files | grep -E '(^|/)(__pycache__|\.pytest_cache|\.venv|venv|neuroinsight-datasets|neuroinsight-experiments|datasets|experiments|checkpoints|outputs)(/|$)|(^|/)\.env($|\.)|\.(pyc|pyo|pth|pt|ckpt|onnx|nii|nii\.gz|dcm|nrrd|mha|mhd)$'

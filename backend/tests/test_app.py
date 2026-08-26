@@ -9,6 +9,8 @@ import pytest
 from PIL import Image
 
 from neuroinsight_api.app import app
+import neuroinsight_api.app as app_module
+from neuroinsight_api.rate_limit import FixedWindowRateLimiter
 from neuroinsight_api.schemas import AnalysisMode
 from neuroinsight_api.upload_validation import UploadValidationError, validate_upload
 
@@ -63,6 +65,17 @@ def test_validation_service_allows_only_configured_dashboard_origins():
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
     assert "POST" in response.headers["access-control-allow-methods"]
+
+
+def test_public_demo_rate_limit_returns_retry_after_and_request_id(monkeypatch):
+    monkeypatch.setattr(app_module, "public_request_limiter", FixedWindowRateLimiter(window_seconds=60, max_requests=1))
+    first = client.post("/api/v1/report", json={})
+    assert first.status_code == 422
+    response = client.post("/api/v1/report", json={})
+    assert response.status_code == 429
+    assert response.headers["retry-after"]
+    assert response.headers["x-request-id"]
+    assert response.json()["request_id"] == response.headers["x-request-id"]
 
 
 def test_classify_validates_input_but_does_not_fabricate_prediction():

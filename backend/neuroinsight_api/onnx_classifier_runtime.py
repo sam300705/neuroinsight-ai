@@ -15,9 +15,8 @@ from urllib.request import urlopen
 import numpy as np
 import onnxruntime as ort
 from PIL import Image
+from .model_contract import MODEL_LABELS, PUBLIC_LABELS, NORMALIZATION_MEAN, NORMALIZATION_STD, validate_calibration, validate_metadata
 
-MODEL_LABELS = ["glioma", "meningioma", "notumor", "pituitary"]
-PUBLIC_LABELS = {"notumor": "no_tumor", "glioma": "glioma", "meningioma": "meningioma", "pituitary": "pituitary"}
 
 
 @dataclass(frozen=True)
@@ -53,22 +52,19 @@ def _download_verified_https(url: str, destination: Path, expected_sha256: str) 
 class OnnxExperimentalClassifier:
     def __init__(self, model_path: Path, metadata_path: Path, calibration_path: Path):
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-        if metadata.get("architecture") != "resnet50" or metadata.get("labels") != MODEL_LABELS:
-            raise ValueError("Configured ONNX metadata does not match the audited ResNet50 four-class contract.")
-        self.image_size = int(metadata["image_size"])
+        self.image_size = validate_metadata(metadata)
         self.fc_weights = np.asarray(metadata["final_fc_weights"], dtype=np.float32)
         if self.fc_weights.shape != (4, 2048):
             raise ValueError("Configured ONNX metadata has an incompatible classifier weight shape.")
         calibration = json.loads(calibration_path.read_text(encoding="utf-8"))
-        self.temperature = float(calibration["temperature"])
-        self.abstention_threshold = float(calibration["abstention_policy"]["threshold"])
+        self.temperature, self.abstention_threshold = validate_calibration(calibration)
         self.session = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])
 
     def predict(self, payload: bytes) -> ExperimentalPrediction:
         image = Image.open(io.BytesIO(payload)).convert("RGB")
         input_image = image.resize((self.image_size, self.image_size), Image.Resampling.BILINEAR)
         tensor = np.asarray(input_image, dtype=np.float32) / 255.0
-        tensor = (tensor - np.asarray([0.485, 0.456, 0.406], dtype=np.float32)) / np.asarray([0.229, 0.224, 0.225], dtype=np.float32)
+        tensor = (tensor - np.asarray(NORMALIZATION_MEAN, dtype=np.float32)) / np.asarray(NORMALIZATION_STD, dtype=np.float32)
         tensor = np.transpose(tensor, (2, 0, 1))[None, ...]
         logits, feature_maps = self.session.run(["logits", "feature_maps"], {"image": tensor})
         scaled_logits = logits[0] / self.temperature
