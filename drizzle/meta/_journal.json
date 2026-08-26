@@ -15,6 +15,20 @@
       "when": 1787333180610,
       "tag": "0001_romantic_mesmero",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1787761295663,
+      "tag": "0002_steady_rhodey",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1787761867993,
+      "tag": "0003_quick_catseye",
+      "breakpoints": true
     }
   ]
 }
