@@ -1,11 +1,4 @@
-fastapi>=0.115,<1.0
-uvicorn[standard]>=0.30,<1.0
-python-multipart>=0.0.12,<1.0
-pydantic>=2.9,<3.0
-pillow>=10.0,<12.0
-numpy>=1.26,<3.0
-onnxruntime>=1.20,<2.0
-nibabel>=5.2,<6.0
-reportlab>=4.2,<5.0
-fpdf2>=2.8,<3.0
-pypdf>=5.0,<6.0
+# Compatibility entry point. Do not edit package pins here.
+# Generate this exact runtime set from backend/pyproject.toml via:
+# uv lock --directory backend && uv export --directory backend --locked --no-dev --no-emit-project --no-hashes --output-file requirements.lock
+-r requirements.lock

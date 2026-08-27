@@ -15,5 +15,23 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["server/**/*.test.ts", "server/**/*.spec.ts", "client/src/**/*.test.ts", "client/src/**/*.spec.ts"],
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "json-summary"],
+      reportsDirectory: "coverage",
+      include: [
+        "client/src/lib/inferenceApi.ts",
+        "server/_core/csrf.ts",
+        "server/_core/httpSecurity.ts",
+        "server/neuroinsight/artifactLifecycle.ts",
+        "server/neuroinsight/historyPolicy.ts",
+        "server/neuroinsight/validation.ts",
+      ],
+      thresholds: {
+        lines: 80,
+        functions: 95,
+        branches: 50,
+      },
+    },
   },
 });
