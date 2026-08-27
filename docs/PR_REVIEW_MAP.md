@@ -1,6 +1,6 @@
 # PR #1 Risk-Based Review Map
 
-This map is a review aid for PR #1, not an approval. **Baseline review snapshot:** GitHub reported **44 commits / 142 changed paths** at baseline head `5bbcc69`. **Current reconciliation snapshot:** GitHub reported **51 commits / 100 changed files** at reviewed head `7dce197415acb8cd750e3473a4fb6fee7926c741`; subsequent documentation-only reconciliation commits may advance that count, so the live PR remains the source of truth. Every changed path was inventory-classified, but no claim is made that every path received full line-by-line semantic review. Detailed source review concentrated on the high-risk paths below; CI success does not substitute for human review.
+This map is a review aid for PR #1, not an approval. **Baseline historical review snapshot:** GitHub reported **44 commits / 142 changed paths** at baseline head `5bbcc69`. **Fresh live-PR evidence snapshot:** GitHub reported **52 commits / 154 changed files** at head `078f6181a0bb61419e9619b4b3b240a52aba399f`. A documentation-only reconciliation commit may advance the live head and commit count, so the GitHub PR remains the source of truth after that point. Every changed path was inventory-classified, but no claim is made that every path received full line-by-line semantic review. Detailed source review concentrated on the high-risk paths below; CI success does not substitute for human review.
 
 | Review group | Files or areas | Risk | Recommended review focus |
 |---|---|---:|---|
@@ -20,6 +20,10 @@ This map is a review aid for PR #1, not an approval. **Baseline review snapshot:
 3. Review **CI/security/deployment** and generated locks next, including the lock/audit/SBOM/container smoke steps.
 4. Review **ML evidence** against the capability manifest and dataset audit before considering a model change.
 5. Review frontend transport/accessibility changes and then documentation for accurate public-facing scope.
+
+## Fresh branch-protection evidence
+
+On the fresh read-only check for the `078f6181a0bb61419e9619b4b3b240a52aba399f` evidence snapshot, the GitHub branch-protection endpoint for `main` returned **`404: Branch not protected`**. This is an observed configuration fact, not a request or authorization to change it. Configure branch protection and required review/check policy before any owner merge decision.
 
 ## Split strategy
 
