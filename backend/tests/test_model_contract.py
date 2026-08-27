@@ -152,6 +152,16 @@ def test_onnx_initialization_checks_input_output_names_and_fixed_160px_shapes(tm
     monkeypatch.setattr("neuroinsight_api.onnx_classifier_runtime.ort.InferenceSession", lambda *_args, **_kwargs: ValidSession())
     assert OnnxExperimentalClassifier(model, metadata, calibration).image_size == 160
 
+    class StaticBatchSession(ValidSession):
+        def get_inputs(self):
+            return [Item("image", [1, 3, 160, 160])]
+
+        def get_outputs(self):
+            return [Item("logits", [1, 4]), Item("feature_maps", [1, 2048, 5, 5])]
+
+    monkeypatch.setattr("neuroinsight_api.onnx_classifier_runtime.ort.InferenceSession", lambda *_args, **_kwargs: StaticBatchSession())
+    assert OnnxExperimentalClassifier(model, metadata, calibration).image_size == 160
+
     class InvalidSession(ValidSession):
         def get_outputs(self):
             return [Item("logits", [None, 4]), Item("feature_maps", [None, 2048, 7, 7])]

@@ -149,14 +149,24 @@ class OnnxExperimentalClassifier:
     def _validate_runtime_contract(self) -> None:
         inputs = {item.name: item.shape for item in self.session.get_inputs()}
         outputs = {item.name: item.shape for item in self.session.get_outputs()}
-        expected_input = [None, 3, IMAGE_SIZE, IMAGE_SIZE]
         input_shape = list(inputs.get("image", []))
-        if input_shape != expected_input:
-            raise ClassifierInitializationError("contract_mismatch")
         logits_shape = list(outputs.get("logits", []))
         feature_maps_shape = list(outputs.get("feature_maps", []))
-        if logits_shape != [None, 4] or feature_maps_shape != [None, 2048, 5, 5]:
+        if not (
+            self._matches_batched_shape(input_shape, [3, IMAGE_SIZE, IMAGE_SIZE])
+            and self._matches_batched_shape(logits_shape, [4])
+            and self._matches_batched_shape(feature_maps_shape, [2048, 5, 5])
+        ):
             raise ClassifierInitializationError("contract_mismatch")
+
+    @staticmethod
+    def _matches_batched_shape(shape: list[object], dimensions: list[int]) -> bool:
+        """Allow only batch=1 or a named/dynamic batch; all model dimensions stay fixed."""
+        return (
+            len(shape) == len(dimensions) + 1
+            and (shape[0] is None or shape[0] == 1 or (isinstance(shape[0], str) and bool(shape[0].strip())))
+            and shape[1:] == dimensions
+        )
 
     def predict(self, payload: bytes) -> ExperimentalPrediction:
         image = Image.open(io.BytesIO(payload)).convert("RGB")
