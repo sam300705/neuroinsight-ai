@@ -1,6 +1,6 @@
 # PR #1 Risk-Based Review Map
 
-This map is a review aid for PR #1, not an approval. **Baseline review snapshot:** GitHub reported **44 commits / 142 changed paths** at baseline head `5bbcc69`. **Final PR snapshot:** GitHub currently reports **50 commits / 100 changed files** at reviewed head `f549122b7b5e003ba236d78e012229b88ea21c33`. Every changed path was inventory-classified, but no claim is made that every path received full line-by-line semantic review. Detailed source review concentrated on the high-risk paths below; CI success does not substitute for human review.
+This map is a review aid for PR #1, not an approval. **Baseline review snapshot:** GitHub reported **44 commits / 142 changed paths** at baseline head `5bbcc69`. **Current reconciliation snapshot:** GitHub reported **51 commits / 100 changed files** at reviewed head `7dce197415acb8cd750e3473a4fb6fee7926c741`; subsequent documentation-only reconciliation commits may advance that count, so the live PR remains the source of truth. Every changed path was inventory-classified, but no claim is made that every path received full line-by-line semantic review. Detailed source review concentrated on the high-risk paths below; CI success does not substitute for human review.
 
 | Review group | Files or areas | Risk | Recommended review focus |
 |---|---|---:|---|
