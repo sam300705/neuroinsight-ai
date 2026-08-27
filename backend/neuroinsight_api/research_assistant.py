@@ -98,6 +98,60 @@ def _http_post_json(url: str, headers: dict[str, str], payload: dict[str, Any]) 
         return json.loads(response.read().decode("utf-8"))
 
 
+def extract_openai_response_text(response: dict[str, Any]) -> str:
+    """Extract exactly one assistant output-text part from a raw Responses API JSON object."""
+    if response.get("status") != "completed":
+        raise ValueError("OpenAI response is not completed")
+    output = response.get("output")
+    if not isinstance(output, list):
+        raise ValueError("OpenAI response has no output list")
+
+    text_parts: list[str] = []
+    for item in output:
+        if not isinstance(item, dict) or item.get("type") != "message" or item.get("role") != "assistant":
+            continue
+        content = item.get("content")
+        if not isinstance(content, list):
+            raise ValueError("OpenAI assistant message content is malformed")
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "output_text":
+                text = part.get("text")
+                if not isinstance(text, str) or not text.strip():
+                    raise ValueError("OpenAI output text is empty or malformed")
+                text_parts.append(text)
+
+    if len(text_parts) != 1:
+        raise ValueError("OpenAI response must contain exactly one assistant output-text part")
+    return text_parts[0]
+
+
+def extract_gemini_response_text(response: dict[str, Any]) -> str:
+    """Extract exactly one model-output text part from a raw Gemini Interactions JSON object."""
+    if response.get("status") != "completed":
+        raise ValueError("Gemini interaction is not completed")
+    steps = response.get("steps")
+    if not isinstance(steps, list):
+        raise ValueError("Gemini interaction has no steps list")
+
+    text_parts: list[str] = []
+    for step in steps:
+        if not isinstance(step, dict) or step.get("type") != "model_output":
+            continue
+        content = step.get("content")
+        if not isinstance(content, list):
+            raise ValueError("Gemini model-output content is malformed")
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "text":
+                text = part.get("text")
+                if not isinstance(text, str) or not text.strip():
+                    raise ValueError("Gemini model-output text is empty or malformed")
+                text_parts.append(text)
+
+    if len(text_parts) != 1:
+        raise ValueError("Gemini interaction must contain exactly one model-output text part")
+    return text_parts[0]
+
+
 class ResearchProvider:
     name: ProviderName
 
@@ -128,7 +182,7 @@ class OpenAIResearchProvider(ResearchProvider):
                 "text": {"format": {"type": "json_schema", "name": "research_explanation", "strict": True, "schema": _output_schema()}},
             },
         )
-        return self._parse(str(response["output_text"]))
+        return self._parse(extract_openai_response_text(response))
 
 
 class GeminiResearchProvider(ResearchProvider):
@@ -146,10 +200,11 @@ class GeminiResearchProvider(ResearchProvider):
             {
                 "model": self.model,
                 "input": _provider_prompt(request),
+                "store": False,
                 "response_format": {"type": "text", "mime_type": "application/json", "schema": _output_schema()},
             },
         )
-        return self._parse(str(response["output_text"]))
+        return self._parse(extract_gemini_response_text(response))
 
 
 def configured_provider() -> ResearchProvider | None:

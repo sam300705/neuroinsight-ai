@@ -6,10 +6,10 @@ from .schemas import ChatRequest
 
 UNSAFE_TERMS = (
     "medicine", "medication", "surgery", "operate", "treatment", "diagnose", "diagnosis", "cancer",
-    "prognosis", "survival", "staging", "stage", "radiologist replacement", "replace my doctor",
+    "prognosis", "survival", "survive", "staging", "stage", "radiologist replacement", "replace my doctor",
     "इलाज", "दवा", "सर्जरी", "निदान", "कैंसर", "पूर्वानुमान", "जीवित",
 )
-PROMPT_INJECTION_TERMS = ("system prompt", "hidden prompt", "ignore previous", "reveal prompt", "instructions", "प्रॉम्प्ट", "निर्देश")
+PROMPT_INJECTION_TERMS = ("system prompt", "hidden prompt", "ignore previous", "ignore all", "safety rules", "act as a doctor", "reveal prompt", "instructions", "प्रॉम्प्ट", "निर्देश")
 
 
 def unsafe_question_category(question: str) -> str | None:
