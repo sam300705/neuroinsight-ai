@@ -4,14 +4,15 @@ import { getDb } from "../db";
 import { storageGetSignedUrl, storagePut } from "../storage";
 import { artifactRegistrationSchema, scanResultSchema, validateArtifactPayload } from "./validation";
 import { deleteAllOwnedScans, deleteOwnedScan, issueOwnedArtifactDownload } from "./artifactLifecycle";
+import { ACTIVE_HISTORY_MODE, historyListInputSchema } from "./historyPolicy";
 import { protectedProcedure, router } from "../_core/trpc";
 import { z } from "zod";
 
 export const scansRouter = router({
-  list: protectedProcedure.input(z.object({ limit: z.number().int().min(1).max(50).default(20), cursor: z.number().int().positive().optional(), predictedClass: z.enum(["glioma", "meningioma", "pituitary", "no_tumor"]).optional(), status: z.enum(["complete", "low_confidence", "incompatible", "partial", "unavailable"]).optional(), mode: z.enum(["classification", "segmentation"]).optional(), search: z.string().trim().max(64).optional() }).default({ limit: 20 })).query(async ({ ctx, input }) => {
+  list: protectedProcedure.input(historyListInputSchema).query(async ({ ctx, input }) => {
     const db = await getDb();
     if (!db) return { items: [], nextCursor: null };
-    const conditions = [eq(scanRecords.userId, ctx.user.id), input.cursor ? lt(scanRecords.id, input.cursor) : undefined, input.predictedClass ? eq(scanRecords.predictedClass, input.predictedClass) : undefined, input.status ? eq(scanRecords.status, input.status) : undefined, input.mode ? eq(scanRecords.mode, input.mode) : undefined, input.search ? like(scanRecords.scanId, `%${input.search.replace(/[\\%_]/g, "\\$&")}%`) : undefined].filter(Boolean);
+    const conditions = [eq(scanRecords.userId, ctx.user.id), eq(scanRecords.mode, ACTIVE_HISTORY_MODE), input.cursor ? lt(scanRecords.id, input.cursor) : undefined, input.predictedClass ? eq(scanRecords.predictedClass, input.predictedClass) : undefined, input.status ? eq(scanRecords.status, input.status) : undefined, input.search ? like(scanRecords.scanId, `%${input.search.replace(/[\\%_]/g, "\\$&")}%`) : undefined].filter(Boolean);
     const records = await db.select().from(scanRecords).where(and(...conditions)).orderBy(desc(scanRecords.id)).limit(input.limit + 1);
     const hasNextPage = records.length > input.limit;
     const page = hasNextPage ? records.slice(0, input.limit) : records;

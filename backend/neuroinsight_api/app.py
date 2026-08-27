@@ -13,7 +13,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
-from .constants import ACADEMIC_DISCLAIMER, GLIOMA_SCOPE_DISCLAIMER, MAX_MULTIPART_REQUEST_BYTES, MAX_UPLOAD_BYTES, MODEL_UNAVAILABLE_MESSAGE
+from .constants import ACADEMIC_DISCLAIMER, GLIOMA_SCOPE_DISCLAIMER, MAX_MULTIPART_REQUEST_BYTES, MAX_REPORT_REQUEST_BYTES, MAX_UPLOAD_BYTES, MODEL_UNAVAILABLE_MESSAGE
 from .offline_faq import answer_offline
 from .rate_limit import FixedWindowRateLimiter
 from .schemas import AnalysisMode, AnalysisResponse, ChatRequest, ChatResponse, Measurement, ModelInfo, ReportRequest
@@ -82,6 +82,24 @@ async def request_id_middleware(request: Request, call_next):
 
 @app.middleware("http")
 async def public_demo_rate_limit_middleware(request: Request, call_next):
+    if request.method == "POST" and request.url.path == "/api/v1/report":
+        declared_length = request.headers.get("content-length")
+        if declared_length:
+            request_id = getattr(request.state, "request_id", str(uuid.uuid4()))
+            try:
+                request_size = int(declared_length)
+            except ValueError:
+                return JSONResponse(
+                    status_code=422,
+                    content={"request_id": request_id, "detail": "The report Content-Length header is invalid."},
+                    headers={"x-request-id": request_id},
+                )
+            if request_size < 0 or request_size > MAX_REPORT_REQUEST_BYTES:
+                return JSONResponse(
+                    status_code=422,
+                    content={"request_id": request_id, "detail": "The report request exceeds the 15 MB limit."},
+                    headers={"x-request-id": request_id},
+                )
     if request.method == "POST" and request.url.path in limited_paths:
         client_host = request.client.host if request.client else "unknown"
         allowed, retry_after = public_request_limiter.allow(f"{request.url.path}:{client_host}")

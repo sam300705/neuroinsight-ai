@@ -95,6 +95,16 @@ def test_public_demo_rate_limit_returns_retry_after_and_request_id(monkeypatch):
     assert response.json()["request_id"] == response.headers["x-request-id"]
 
 
+def test_report_rejects_malformed_or_oversized_declared_requests_before_model_parsing():
+    malformed = client.post("/api/v1/report", json={}, headers={"content-length": "unknown"})
+    oversized = client.post("/api/v1/report", json={}, headers={"content-length": str(16 * 1024 * 1024)})
+    assert malformed.status_code == 422
+    assert "Content-Length header is invalid" in malformed.json()["detail"]
+    assert malformed.headers["x-request-id"] == malformed.json()["request_id"]
+    assert oversized.status_code == 422
+    assert "exceeds the 15 MB limit" in oversized.json()["detail"]
+
+
 def test_classify_validates_input_but_does_not_fabricate_prediction():
     response = client.post(
         "/api/v1/classify",

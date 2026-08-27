@@ -9,5 +9,12 @@ describe("NeuroInsight scan persistence validation", () => {
   it("requires the exact delete-all confirmation phrase", () => expect(() => z.literal("DELETE_ALL_RESEARCH_HISTORY").parse("DELETE")).toThrow());
   it("rejects a mismatched derived-artifact signature", () => expect(() => validateArtifactPayload(Buffer.from("not png").toString("base64"), "image/png")).toThrow("valid PNG"));
   it("accepts a correctly constrained derived artifact registration", () => expect(artifactRegistrationSchema.parse({ scanId: unavailable.scanId, artifactType: "report", contentType: "application/pdf", fileName: "report.pdf", base64: Buffer.from("%PDF-1.4\n").toString("base64") }).artifactType).toBe("report"));
+  it("allows only the deployed Mode A MIME type for each artifact", () => {
+    const input = { scanId: unavailable.scanId, fileName: "artifact.bin", base64: Buffer.from("payload").toString("base64") };
+    expect(() => artifactRegistrationSchema.parse({ ...input, artifactType: "report", contentType: "image/png" })).toThrow();
+    expect(() => artifactRegistrationSchema.parse({ ...input, artifactType: "grad_cam", contentType: "application/pdf" })).toThrow();
+    expect(() => artifactRegistrationSchema.parse({ ...input, artifactType: "grad_cam", contentType: "application/json" })).toThrow();
+    expect(() => artifactRegistrationSchema.parse({ ...input, artifactType: "grad_cam", contentType: "model/gltf-binary" })).toThrow();
+  });
   it("rejects direct registration of unavailable Mode B artifacts", () => expect(() => artifactRegistrationSchema.parse({ scanId: unavailable.scanId, artifactType: "segmentation_mask", contentType: "image/png", fileName: "mask.png", base64: Buffer.from("mask").toString("base64") })).toThrow());
 });
