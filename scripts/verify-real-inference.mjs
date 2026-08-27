@@ -1,13 +1,14 @@
 import { chromium, expect } from "@playwright/test";
 
 const baseUrl = process.env.E2E_BASE_URL ?? "http://127.0.0.1:3000";
-const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ?? "/usr/bin/chromium";
+const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
 const publicTestImage = process.env.E2E_PUBLIC_TEST_IMAGE ?? "/home/ubuntu/neuroinsight-datasets/bdneuro_v7/extracted/dataset/test/glioma/glioma_test_00118.jpg";
 
-const browser = await chromium.launch({ headless: true, executablePath, args: ["--no-sandbox"] });
+const browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}), args: ["--no-sandbox"] });
 try {
   const page = await browser.newPage();
   await page.goto(`${baseUrl}/analyse`, { waitUntil: "networkidle" });
+  await page.getByRole("checkbox").check();
   await page.locator("#mri-file-input").setInputFiles(publicTestImage);
   await expect(page.getByRole("button", { name: /validate and continue/i })).toBeEnabled();
   await page.getByRole("button", { name: /validate and continue/i }).click();

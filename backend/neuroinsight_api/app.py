@@ -33,12 +33,19 @@ class ClassifierProtocol(Protocol):
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    if os.getenv("USE_ONNX_CLASSIFIER", "false").lower() == "true":
-        from .onnx_classifier_runtime import configured_onnx_classifier
-        app.state.classifier = configured_onnx_classifier()
-    else:
-        from .classifier_runtime import configured_classifier
-        app.state.classifier = configured_classifier()
+    try:
+        if os.getenv("USE_ONNX_CLASSIFIER", "false").lower() == "true":
+            from .onnx_classifier_runtime import configured_onnx_classifier
+            app.state.classifier = configured_onnx_classifier()
+        else:
+            from .classifier_runtime import configured_classifier
+            app.state.classifier = configured_classifier()
+    except Exception as exc:
+        # A transient artifact, checksum, metadata, or runtime failure must not
+        # turn a public research preview into a generic server error. The API
+        # remains available but reports the classifier as unavailable.
+        logger.error("classifier_initialization_failed:error_type=%s", type(exc).__name__)
+        app.state.classifier = None
     yield
 
 
@@ -193,6 +200,9 @@ async def analyze(
     file: UploadFile = File(...),
 ):
     started_at = time.perf_counter()
+    if mode is AnalysisMode.SEGMENTATION:
+        await file.close()
+        return _unavailable_result(request, mode, started_at)
     payload = await _read_bounded_upload(request, file)
     validate_upload(payload, file.filename or "upload", file.content_type, mode)
     if mode is AnalysisMode.CLASSIFICATION and (classifier := getattr(app.state, "classifier", None)):
@@ -213,8 +223,7 @@ async def classify(request: Request, file: UploadFile = File(...)):
 @app.post("/api/v1/segment", response_model=AnalysisResponse)
 async def segment(request: Request, file: UploadFile = File(...)):
     started_at = time.perf_counter()
-    payload = await _read_bounded_upload(request, file)
-    validate_upload(payload, file.filename or "upload", file.content_type, AnalysisMode.SEGMENTATION)
+    await file.close()
     return _unavailable_result(request, AnalysisMode.SEGMENTATION, started_at)
 
 

@@ -1,3 +1,4 @@
+import asyncio
 from io import BytesIO
 
 import base64
@@ -41,6 +42,22 @@ def test_health_and_model_info_are_honest_about_model_state():
     assert client.get("/health").json()["status"] == "ok"
     assert client.get("/ready").json()["ready"] is False
     assert all(item["status"] == "unavailable" for item in client.get("/api/v1/model-info").json())
+
+
+def test_onnx_bootstrap_failure_keeps_the_api_available_and_mode_a_unavailable(monkeypatch):
+    import neuroinsight_api.onnx_classifier_runtime as onnx_runtime
+
+    def fail_bootstrap():
+        raise ValueError("untrusted detail must not be exposed")
+
+    monkeypatch.setenv("USE_ONNX_CLASSIFIER", "true")
+    monkeypatch.setattr(onnx_runtime, "configured_onnx_classifier", fail_bootstrap)
+
+    async def exercise_lifespan():
+        async with app_module.lifespan(app):
+            assert app.state.classifier is None
+
+    asyncio.run(exercise_lifespan())
 
 
 def test_request_id_is_bounded_and_sanitized():
@@ -131,16 +148,25 @@ def test_image_pixel_budget_rejects_decompression_bomb_sized_dimensions(monkeypa
         validate_upload(output.getvalue(), "scan.png", "image/png", AnalysisMode.CLASSIFICATION)
 
 
-def test_segment_accepts_a_valid_nifti_then_returns_model_unavailable():
-    response = client.post(
-        "/api/v1/segment",
-        files={"file": ("volume.nii", nifti_bytes(), "application/x-nifti")},
-    )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["mode"] == "segmentation"
-    assert body["status"] == "unavailable"
-    assert "glioma-focused" in " ".join(body["limitations"])
+def test_mode_b_endpoints_fail_closed_before_application_upload_read(monkeypatch):
+    async def should_not_read(*_args, **_kwargs):
+        raise AssertionError("Mode B must not read or decode public uploads")
+
+    monkeypatch.setattr(app_module, "_read_bounded_upload", should_not_read)
+    for path, data in (
+        ("/api/v1/segment", {}),
+        ("/api/v1/analyze", {"mode": "segmentation"}),
+    ):
+        response = client.post(
+            path,
+            data=data,
+            files={"file": ("not-a-volume.txt", b"unsupported content", "text/plain")},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["mode"] == "segmentation"
+        assert body["status"] == "unavailable"
+        assert "glioma-focused" in " ".join(body["limitations"])
 
 
 def test_offline_chat_refuses_treatment_advice():
