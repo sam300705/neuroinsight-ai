@@ -1,6 +1,6 @@
 ACADEMIC_DISCLAIMER = (
-    "Academic and research use only. This prototype does not provide a medical diagnosis "
-    "and does not replace qualified clinical review."
+    "Academic and research use only. This system is not a medical diagnosis and must not replace "
+    "a qualified radiologist."
 )
 
 GRAD_CAM_DISCLAIMER = (

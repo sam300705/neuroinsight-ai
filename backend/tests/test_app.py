@@ -244,6 +244,7 @@ def test_selected_but_keyless_provider_starts_and_serves_offline_faq(monkeypatch
     assert response.status_code == 200
     assert response.json()["source"] == "offline_faq"
     assert response.json()["category"] == "general"
+    assert response.json()["safety_notice"] == "Academic and research use only. This system is not a medical diagnosis and must not replace a qualified radiologist."
     assert response.headers["x-request-id"] == "assistant-offline-probe"
     assert "assistant_event provider=offline_faq outcome=fallback category=general" in caplog.text
     assert question not in caplog.text
