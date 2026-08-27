@@ -7,6 +7,8 @@ import json
 import logging
 import os
 import re
+import threading
+import time
 from dataclasses import dataclass
 from typing import Any, Callable, Literal
 from urllib.request import Request, urlopen
@@ -23,6 +25,10 @@ ProviderName = Literal["openai", "gemini"]
 AssistantSource = Literal["offline_faq", "openai", "gemini"]
 AssistantCategory = Literal["model_explanation", "calibration", "abstention", "grad_cam", "mode_boundary", "methodology", "report", "general", "refusal"]
 MAX_PROVIDER_ANSWER_CHARS = 900
+MAX_CONCURRENT_PROVIDER_REQUESTS = 2
+PROVIDER_ACQUIRE_TIMEOUT_SECONDS = 1.0
+PROVIDER_CIRCUIT_FAILURE_THRESHOLD = 3
+PROVIDER_CIRCUIT_COOLDOWN_SECONDS = 30
 
 
 class ProviderExplanation(BaseModel):
@@ -43,6 +49,60 @@ class AssistantReply:
     medical_advice_refused: bool
     manual_review_reminder: bool = True
     disclaimer_required: bool = True
+
+
+class ProviderUnavailableError(RuntimeError):
+    """Raised when a bounded provider execution boundary cannot admit a request."""
+
+
+class ProviderConcurrencyLimiter:
+    """A process-local, bounded concurrency guard; it is not a distributed control."""
+
+    def __init__(self, max_concurrent: int = MAX_CONCURRENT_PROVIDER_REQUESTS, acquire_timeout_seconds: float = PROVIDER_ACQUIRE_TIMEOUT_SECONDS):
+        self._semaphore = asyncio.Semaphore(max_concurrent)
+        self.acquire_timeout_seconds = acquire_timeout_seconds
+
+    async def call(self, provider: "ResearchProvider", request: ChatRequest) -> ProviderExplanation:
+        try:
+            await asyncio.wait_for(self._semaphore.acquire(), timeout=self.acquire_timeout_seconds)
+        except TimeoutError as exc:
+            raise ProviderUnavailableError("provider concurrency limit reached") from exc
+        try:
+            return await asyncio.to_thread(provider.explain, request)
+        finally:
+            self._semaphore.release()
+
+
+class ProviderCircuitBreaker:
+    """A bounded local failure circuit; it avoids repeat calls during a short outage."""
+
+    def __init__(self, failure_threshold: int = PROVIDER_CIRCUIT_FAILURE_THRESHOLD, cooldown_seconds: int = PROVIDER_CIRCUIT_COOLDOWN_SECONDS):
+        self.failure_threshold = failure_threshold
+        self.cooldown_seconds = cooldown_seconds
+        self._failures = 0
+        self._unavailable_until = 0.0
+        self._lock = threading.Lock()
+
+    def allow(self, now: float | None = None) -> bool:
+        current = time.monotonic() if now is None else now
+        with self._lock:
+            return current >= self._unavailable_until
+
+    def record_success(self) -> None:
+        with self._lock:
+            self._failures = 0
+            self._unavailable_until = 0.0
+
+    def record_failure(self, now: float | None = None) -> None:
+        current = time.monotonic() if now is None else now
+        with self._lock:
+            self._failures += 1
+            if self._failures >= self.failure_threshold:
+                self._unavailable_until = current + self.cooldown_seconds
+
+
+provider_concurrency_limiter = ProviderConcurrencyLimiter()
+provider_circuit_breaker = ProviderCircuitBreaker()
 
 
 def deidentified_context(request: ChatRequest) -> dict[str, Any]:
@@ -216,20 +276,66 @@ def configured_provider() -> ResearchProvider | None:
     return None
 
 
+_PROVIDER_CLINICAL_PATTERNS = (
+    r"\b(?:you|the patient)\s+(?:have|has|are|is)\s+(?:likely\s+)?(?:a\s+)?(?:glioma|meningioma|pituitary (?:tumou?r)?|cancer|tumou?r)",
+    r"\b(?:this\s+)?(?:scan|image|result)\s+(?:shows|means|confirms|proves|indicates)\s+(?:that )?(?:you|the patient)?\s*(?:have|has)?\s*(?:glioma|meningioma|cancer|tumou?r)",
+    r"\b(?:take|start|stop|use|prescribe|recommend|consider|need|should|must|urgently|immediately|seek|go to|contact|schedule|undergo|have)\b[^.\n]{0,80}\b(?:medicine|medication|drug|dose|dosage|mg|surgery|operation|treatment|therapy|radiologist|doctor|hospital|emergency|urgent care|follow[- ]?up)\b",
+    r"\b(?:will|likely|expected to|chance of)\b[^.\n]{0,60}\b(?:survive|live|recover|prognosis)\b",
+    r"(?:आपको|तुम्हें|मरीज को)[^.\n]{0,60}(?:कैंसर|ट्यूमर|ग्लायोमा|मेनिन्जियोमा)[^.\n]{0,20}(?:है|हैं)",
+    r"(?:दवा|इलाज|सर्जरी|ऑपरेशन|खुराक|मिलीग्राम|तुरंत|आपातकाल|अस्पताल)[^.\n]{0,60}(?:लें|कराएं|कराएँ|जाएं|जाएँ|चाहिए|जरूरी|आवश्यक)",
+    r"(?:आपको|मरीज को)[^.\n]{0,60}(?:दवा|इलाज|सर्जरी|ऑपरेशन|अस्पताल|तुरंत)",
+)
+_PROVIDER_INJECTION_PATTERNS = (
+    r"\b(?:here is|reveal|ignore|override|bypass)\b[^.\n]{0,80}\b(?:system prompt|hidden prompt|developer message|secret|api key|safety (?:rule|boundary))\b",
+    r"(?:यहाँ|यहां)[^.\n]{0,80}(?:छिपा हुआ|सिस्टम)[^.\n]{0,40}(?:प्रॉम्प्ट|निर्देश)",
+)
+
+
 def _unsafe_provider_answer(answer: str) -> bool:
-    return bool(re.search(r"\b(take|prescribe|dosage|operate|undergo surgery|you have|you should get)\b", answer, re.IGNORECASE))
+    """Fail closed on clinically directive/diagnostic content, while allowing limitation statements."""
+    normalized = " ".join(answer.casefold().split())
+    for sentence in re.split(r"(?<=[.!?।])\s+", normalized):
+        limitation_statement = bool(
+            re.match(r"^(?:this|the|an?|experimental|model|system|result)\b.{0,100}\b(?:cannot|can't|does not|do not|will not)\b.{0,100}\b(?:diagnos|treat|prescrib|recommend|clinical|medical)", sentence)
+        )
+        if limitation_statement:
+            continue
+        if any(re.search(pattern, sentence, re.IGNORECASE) for pattern in (*_PROVIDER_CLINICAL_PATTERNS, *_PROVIDER_INJECTION_PATTERNS)):
+            return True
+    return False
 
 
-async def answer_research_question(request: ChatRequest, provider: ResearchProvider | None = None) -> AssistantReply:
+def _consistent_provider_explanation(explanation: ProviderExplanation) -> bool:
+    if not explanation.manual_review_reminder or not explanation.disclaimer_required:
+        return False
+    if (explanation.category == "refusal") != explanation.medical_advice_refused:
+        return False
+    if explanation.medical_advice_refused and not re.search(r"\b(?:cannot|can't|unable|not able|refuse)\b|नहीं", explanation.answer, re.IGNORECASE):
+        return False
+    return not _unsafe_provider_answer(explanation.answer)
+
+
+async def answer_research_question(
+    request: ChatRequest,
+    provider: ResearchProvider | None = None,
+    *,
+    concurrency_limiter: ProviderConcurrencyLimiter | None = None,
+    circuit_breaker: ProviderCircuitBreaker | None = None,
+) -> AssistantReply:
     if unsafe_question_category(request.question):
         return AssistantReply(answer=answer_offline(request), source="offline_faq", attempted_provider="offline_faq", category="refusal", medical_advice_refused=True)
     provider = provider or configured_provider()
     if not provider:
         return AssistantReply(answer=answer_offline(request), source="offline_faq", attempted_provider="offline_faq", category="general", medical_advice_refused=False)
+    limiter = concurrency_limiter or provider_concurrency_limiter
+    circuit = circuit_breaker or provider_circuit_breaker
+    if not circuit.allow():
+        return AssistantReply(answer=answer_offline(request), source="offline_faq", attempted_provider=provider.name, category="general", medical_advice_refused=False)
     try:
-        explanation = await asyncio.to_thread(provider.explain, request)
-        if not explanation.manual_review_reminder or not explanation.disclaimer_required or _unsafe_provider_answer(explanation.answer):
+        explanation = await limiter.call(provider, request)
+        if not _consistent_provider_explanation(explanation):
             raise ValueError("provider response violates the research-explanation contract")
+        circuit.record_success()
         return AssistantReply(
             answer=f"{explanation.answer.strip()} {ACADEMIC_DISCLAIMER}",
             source=provider.name,
@@ -237,5 +343,6 @@ async def answer_research_question(request: ChatRequest, provider: ResearchProvi
             category=explanation.category,
             medical_advice_refused=explanation.medical_advice_refused,
         )
-    except (KeyError, TypeError, ValueError, ValidationError, OSError) as exc:
+    except (KeyError, TypeError, ValueError, ValidationError, OSError, TimeoutError, ProviderUnavailableError):
+        circuit.record_failure()
         return AssistantReply(answer=answer_offline(request), source="offline_faq", attempted_provider=provider.name, category="general", medical_advice_refused=False)
