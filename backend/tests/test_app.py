@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from io import BytesIO
 
 import base64
@@ -204,6 +205,10 @@ def test_offline_chat_refuses_treatment_advice():
     assert response.status_code == 200
     assert response.json()["source"] == "offline_faq"
     assert "cannot advise" in response.json()["answer"]
+    assert response.json()["category"] == "refusal"
+    assert response.json()["medical_advice_refused"] is True
+    assert response.json()["manual_review_reminder"] is True
+    assert response.json()["disclaimer_required"] is True
 
 
 def test_offline_chat_refuses_prompt_injection_in_english_and_hindi():
@@ -213,6 +218,35 @@ def test_offline_chat_refuses_prompt_injection_in_english_and_hindi():
     assert hindi.status_code == 200
     assert "cannot reveal" in english.json()["answer"]
     assert "प्रकट" in hindi.json()["answer"]
+
+
+def test_chat_rejects_unallowlisted_raw_or_identity_fields_before_the_provider_boundary():
+    response = client.post("/api/v1/chat", json={"question": "Explain confidence", "file_name": "private.png", "scan_id": "do-not-accept", "raw_image": "bytes"})
+    assert response.status_code == 422
+    assert "extra_forbidden" in response.text
+
+
+def test_chat_has_an_independent_lower_process_local_limit(monkeypatch):
+    monkeypatch.setattr(app_module, "assistant_request_limiter", FixedWindowRateLimiter(window_seconds=60, max_requests=1))
+    first = client.post("/api/v1/chat", json={"question": "Explain confidence"})
+    blocked = client.post("/api/v1/chat", json={"question": "Explain confidence"})
+    assert first.status_code == 200
+    assert blocked.status_code == 429
+
+
+def test_selected_but_keyless_provider_starts_and_serves_offline_faq(monkeypatch, caplog):
+    caplog.set_level(logging.INFO, logger="neuroinsight_api.app")
+    monkeypatch.setenv("AI_PROVIDER", "openai")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_MODEL", raising=False)
+    question = "Explain confidence"
+    response = client.post("/api/v1/chat", json={"question": question, "language": "en"}, headers={"x-request-id": "assistant-offline-probe"})
+    assert response.status_code == 200
+    assert response.json()["source"] == "offline_faq"
+    assert response.json()["category"] == "general"
+    assert response.headers["x-request-id"] == "assistant-offline-probe"
+    assert "assistant_event provider=offline_faq outcome=fallback category=general" in caplog.text
+    assert question not in caplog.text
 
 
 def test_classification_pdf_report_declares_academic_scope_and_unavailable_measurements():

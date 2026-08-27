@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse, Response
 from .constants import ACADEMIC_DISCLAIMER, GLIOMA_SCOPE_DISCLAIMER, MAX_MULTIPART_REQUEST_BYTES, MAX_REPORT_REQUEST_BYTES, MAX_UPLOAD_BYTES, MODEL_UNAVAILABLE_MESSAGE
 from .offline_faq import answer_offline
 from .rate_limit import FixedWindowRateLimiter
+from .research_assistant import answer_research_question
 from .schemas import AnalysisMode, AnalysisResponse, ChatRequest, ChatResponse, Measurement, ModelInfo, ReportRequest
 from .reporting import build_report
 from .upload_validation import UploadValidationError, validate_upload
@@ -24,7 +25,8 @@ from .upload_validation import UploadValidationError, validate_upload
 logger = logging.getLogger(__name__)
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 public_request_limiter = FixedWindowRateLimiter(window_seconds=60, max_requests=20)
-limited_paths = {"/api/v1/analyze", "/api/v1/classify", "/api/v1/segment", "/api/v1/report"}
+assistant_request_limiter = FixedWindowRateLimiter(window_seconds=60, max_requests=10)
+limited_paths = {"/api/v1/analyze", "/api/v1/classify", "/api/v1/segment", "/api/v1/report", "/api/v1/chat"}
 
 
 class ClassifierProtocol(Protocol):
@@ -106,7 +108,8 @@ async def public_demo_rate_limit_middleware(request: Request, call_next):
                 )
     if request.method == "POST" and request.url.path in limited_paths:
         client_host = request.client.host if request.client else "unknown"
-        allowed, retry_after = public_request_limiter.allow(f"{request.url.path}:{client_host}")
+        limiter = assistant_request_limiter if request.url.path == "/api/v1/chat" else public_request_limiter
+        allowed, retry_after = limiter.allow(f"{request.url.path}:{client_host}")
         if not allowed:
             request_id = getattr(request.state, "request_id", str(uuid.uuid4()))
             request.state.request_id = request_id
@@ -250,10 +253,24 @@ async def segment(request: Request, file: UploadFile = File(...)):
 
 
 @app.post("/api/v1/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest, http_request: Request):
+    started_at = time.perf_counter()
+    reply = await answer_research_question(request)
+    logger.info(
+        "assistant_event provider=%s outcome=%s category=%s latency_ms=%d request_id=%s",
+        reply.attempted_provider,
+        "refused" if reply.medical_advice_refused else ("fallback" if reply.source == "offline_faq" else "answered"),
+        reply.category,
+        int((time.perf_counter() - started_at) * 1000),
+        getattr(http_request.state, "request_id", "unknown"),
+    )
     return ChatResponse(
-        answer=answer_offline(request),
-        source="offline_faq",
+        answer=reply.answer,
+        source=reply.source,
+        category=reply.category,
+        medical_advice_refused=reply.medical_advice_refused,
+        manual_review_reminder=reply.manual_review_reminder,
+        disclaimer_required=reply.disclaimer_required,
         safety_notice=ACADEMIC_DISCLAIMER,
     )
 

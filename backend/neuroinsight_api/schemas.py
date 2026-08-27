@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AnalysisMode(str, Enum):
@@ -52,17 +52,28 @@ class AnalysisResponse(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    question: str = Field(min_length=1, max_length=1_000)
+    model_config = ConfigDict(extra="forbid")
+    question: str = Field(min_length=1, max_length=600)
     language: Literal["en", "hi"] = "en"
-    predicted_class: str | None = None
+    purpose: Literal["question", "result_summary"] = "question"
+    predicted_class: Literal["glioma", "meningioma", "pituitary", "no_tumor"] | None = None
+    model_version: Literal["bdneuro-v7-resnet50-head-only-exp005"] | None = None
     model_confidence_score: float | None = Field(default=None, ge=0, le=1)
+    calibrated: bool = False
+    manual_review_recommended: bool = True
+    grad_cam_available: bool = False
     uncertainty_reason: str | None = None
-    measurement: Measurement | None = None
+    measurement_available: bool = False
 
 
 class ChatResponse(BaseModel):
-    answer: str
-    source: Literal["offline_faq", "llm"]
+    model_config = ConfigDict(extra="forbid")
+    answer: str = Field(min_length=1, max_length=1_200)
+    source: Literal["offline_faq", "openai", "gemini"]
+    category: Literal["model_explanation", "calibration", "abstention", "grad_cam", "mode_boundary", "methodology", "report", "general", "refusal"]
+    medical_advice_refused: bool
+    manual_review_reminder: bool
+    disclaimer_required: bool
     safety_notice: str
 
 

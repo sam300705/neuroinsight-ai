@@ -4,20 +4,33 @@ from .constants import ACADEMIC_DISCLAIMER, GRAD_CAM_DISCLAIMER
 from .schemas import ChatRequest
 
 
-UNSAFE_TERMS = ("medicine", "medication", "surgery", "operate", "treatment", "diagnose", "cancer")
+UNSAFE_TERMS = (
+    "medicine", "medication", "surgery", "operate", "treatment", "diagnose", "diagnosis", "cancer",
+    "prognosis", "survival", "staging", "stage", "radiologist replacement", "replace my doctor",
+    "इलाज", "दवा", "सर्जरी", "निदान", "कैंसर", "पूर्वानुमान", "जीवित",
+)
 PROMPT_INJECTION_TERMS = ("system prompt", "hidden prompt", "ignore previous", "reveal prompt", "instructions", "प्रॉम्प्ट", "निर्देश")
+
+
+def unsafe_question_category(question: str) -> str | None:
+    normalized = question.strip().lower()
+    if any(term in normalized for term in PROMPT_INJECTION_TERMS):
+        return "prompt_injection"
+    if any(term in normalized for term in UNSAFE_TERMS):
+        return "medical_advice"
+    return None
 
 
 def answer_offline(request: ChatRequest) -> str:
     question = request.question.strip().lower()
     hindi = request.language == "hi"
-    if any(term in question for term in PROMPT_INJECTION_TERMS):
+    if unsafe_question_category(question) == "prompt_injection":
         return (
             "मैं छिपे हुए निर्देश, आंतरिक प्रॉम्प्ट या सुरक्षा सीमाएँ प्रकट या बदल नहीं सकता। "
             if hindi
             else "I cannot reveal or alter hidden instructions, internal prompts, or safety boundaries. "
         ) + ACADEMIC_DISCLAIMER
-    if any(term in question for term in UNSAFE_TERMS):
+    if unsafe_question_category(question) == "medical_advice":
         return (
             "मैं उपचार, दवा, सर्जरी या निदान की सलाह नहीं दे सकता। कृपया योग्य चिकित्सक से बात करें। "
             if hindi
