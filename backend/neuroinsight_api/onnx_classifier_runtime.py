@@ -18,6 +18,13 @@ from PIL import Image
 from .model_contract import MODEL_LABELS, PUBLIC_LABELS, NORMALIZATION_MEAN, NORMALIZATION_STD, validate_calibration, validate_metadata
 
 
+class ClassifierInitializationError(RuntimeError):
+    """A public-safe classification of an internal classifier startup failure."""
+
+    def __init__(self, category: str):
+        super().__init__(category)
+        self.category = category
+
 
 @dataclass(frozen=True)
 class ExperimentalPrediction:
@@ -32,33 +39,49 @@ class ExperimentalPrediction:
 def _download_verified_https(url: str, destination: Path, expected_sha256: str) -> Path:
     parsed = urlparse(url)
     if parsed.scheme != "https" or not parsed.netloc:
-        raise ValueError("Model artifact URLs must use HTTPS.")
+        raise ClassifierInitializationError("download_failed")
     if destination.is_file() and hashlib.sha256(destination.read_bytes()).hexdigest() == expected_sha256:
         return destination
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_suffix(destination.suffix + ".partial")
     digest = hashlib.sha256()
-    with urlopen(url, timeout=90) as response, temporary.open("wb") as stream:
-        while chunk := response.read(1024 * 1024):
-            digest.update(chunk)
-            stream.write(chunk)
+    try:
+        with urlopen(url, timeout=90) as response, temporary.open("wb") as stream:
+            while chunk := response.read(1024 * 1024):
+                digest.update(chunk)
+                stream.write(chunk)
+    except Exception as exc:
+        temporary.unlink(missing_ok=True)
+        raise ClassifierInitializationError("download_failed") from exc
     if digest.hexdigest() != expected_sha256:
         temporary.unlink(missing_ok=True)
-        raise ValueError("Downloaded model artifact checksum does not match the audited configured value.")
+        raise ClassifierInitializationError("checksum_mismatch")
     temporary.replace(destination)
     return destination
 
 
 class OnnxExperimentalClassifier:
     def __init__(self, model_path: Path, metadata_path: Path, calibration_path: Path):
-        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-        self.image_size = validate_metadata(metadata)
-        self.fc_weights = np.asarray(metadata["final_fc_weights"], dtype=np.float32)
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            self.image_size = validate_metadata(metadata)
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ClassifierInitializationError("contract_mismatch") from exc
+        try:
+            self.fc_weights = np.asarray(metadata["final_fc_weights"], dtype=np.float32)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ClassifierInitializationError("metadata_invalid") from exc
         if self.fc_weights.shape != (4, 2048):
-            raise ValueError("Configured ONNX metadata has an incompatible classifier weight shape.")
-        calibration = json.loads(calibration_path.read_text(encoding="utf-8"))
-        self.temperature, self.abstention_threshold = validate_calibration(calibration)
-        self.session = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])
+            raise ClassifierInitializationError("contract_mismatch")
+        try:
+            calibration = json.loads(calibration_path.read_text(encoding="utf-8"))
+            self.temperature, self.abstention_threshold = validate_calibration(calibration)
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ClassifierInitializationError("metadata_invalid") from exc
+        try:
+            self.session = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])
+        except Exception as exc:
+            raise ClassifierInitializationError("onnx_initialization_failed") from exc
 
     def predict(self, payload: bytes) -> ExperimentalPrediction:
         image = Image.open(io.BytesIO(payload)).convert("RGB")
@@ -99,7 +122,7 @@ def configured_onnx_classifier() -> OnnxExperimentalClassifier | None:
         return None
     keys = ["CLASSIFICATION_ONNX_URL", "CLASSIFICATION_ONNX_SHA256", "CLASSIFICATION_ONNX_METADATA_URL", "CLASSIFICATION_ONNX_METADATA_SHA256", "CLASSIFICATION_CALIBRATION_URL", "CLASSIFICATION_CALIBRATION_SHA256"]
     if not all(os.getenv(key) for key in keys):
-        return None
+        raise ClassifierInitializationError("artifact_missing")
     cache_dir = Path(os.getenv("MODEL_CACHE_DIR", "/tmp/neuroinsight-model"))
     model_path = _download_verified_https(os.environ["CLASSIFICATION_ONNX_URL"], cache_dir / "experimental-classifier.onnx", os.environ["CLASSIFICATION_ONNX_SHA256"])
     metadata_path = _download_verified_https(os.environ["CLASSIFICATION_ONNX_METADATA_URL"], cache_dir / "experimental-classifier-metadata.json", os.environ["CLASSIFICATION_ONNX_METADATA_SHA256"])

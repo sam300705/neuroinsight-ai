@@ -4,7 +4,7 @@ from typing import Any
 
 MODEL_LABELS = ["glioma", "meningioma", "notumor", "pituitary"]
 PUBLIC_LABELS = {"notumor": "no_tumor", "glioma": "glioma", "meningioma": "meningioma", "pituitary": "pituitary"}
-IMAGE_SIZE = 224
+IMAGE_SIZE = 160
 NORMALIZATION_MEAN = (0.485, 0.456, 0.406)
 NORMALIZATION_STD = (0.229, 0.224, 0.225)
 

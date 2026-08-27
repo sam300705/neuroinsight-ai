@@ -60,6 +60,26 @@ def test_onnx_bootstrap_failure_keeps_the_api_available_and_mode_a_unavailable(m
     asyncio.run(exercise_lifespan())
 
 
+def test_categorized_onnx_failure_is_logged_internally_but_not_exposed(monkeypatch, caplog):
+    import neuroinsight_api.onnx_classifier_runtime as onnx_runtime
+
+    def fail_bootstrap():
+        raise onnx_runtime.ClassifierInitializationError("contract_mismatch")
+
+    monkeypatch.setenv("USE_ONNX_CLASSIFIER", "true")
+    monkeypatch.setattr(onnx_runtime, "configured_onnx_classifier", fail_bootstrap)
+
+    async def exercise_lifespan():
+        async with app_module.lifespan(app):
+            response = client.get("/api/v1/model-info")
+            assert response.status_code == 200
+            assert response.json()[0]["status"] == "unavailable"
+            assert "contract_mismatch" not in response.text
+
+    asyncio.run(exercise_lifespan())
+    assert "classifier_initialization_failed:category=contract_mismatch:error_type=ClassifierInitializationError" in caplog.text
+
+
 def test_request_id_is_bounded_and_sanitized():
     accepted = client.get("/health", headers={"x-request-id": "research-run_2026.08"})
     assert accepted.headers["x-request-id"] == "research-run_2026.08"

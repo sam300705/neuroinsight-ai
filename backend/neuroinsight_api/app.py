@@ -44,7 +44,11 @@ async def lifespan(_: FastAPI):
         # A transient artifact, checksum, metadata, or runtime failure must not
         # turn a public research preview into a generic server error. The API
         # remains available but reports the classifier as unavailable.
-        logger.error("classifier_initialization_failed:error_type=%s", type(exc).__name__)
+        logger.error(
+            "classifier_initialization_failed:category=%s:error_type=%s",
+            getattr(exc, "category", "unknown"),
+            type(exc).__name__,
+        )
         app.state.classifier = None
     yield
 
