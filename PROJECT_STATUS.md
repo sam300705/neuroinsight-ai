@@ -1,6 +1,6 @@
 # NeuroInsight AI — Project Status
 
-**Last updated:** 2026-08-26
+**Last updated:** 2026-08-27
 **Current readiness:** **Level 1 — functional academic demonstration.** The project is not a medical device, a patient-level validated system, or a clinical deployment.
 
 > **Required notice:** “This system is not a medical diagnosis and must not replace a qualified radiologist.”
@@ -20,7 +20,7 @@ The public dashboard is <https://neuroaiapp-gtbxy6cw.manus.space>. Its CORS-rest
 
 ## Verified evidence
 
-EXP-005 achieved held-out fixed-split **image-level** accuracy `0.8099`, macro-F1 `0.8080`, and weighted-F1 `0.8110`. These results are not patient-independent, external, clinical, diagnostic, or medical-probability evidence. The latest recorded regression evidence is **42** Vitest tests, **21** FastAPI tests, and **8** ML/data tests; passing TypeScript/build checks; a clean high-severity production dependency audit; passing browser inference checks; ownership-scoped history/artifact constraints and cursor pagination; a user-approved signed-in derived-artifact retrieval check; server-side rejection of direct Mode B persistence/report requests; bounded public-demo requests; and browser/server upload safety checks. See `docs/TEST_REPORT.md` for methods and boundaries.
+EXP-005 achieved held-out fixed-split **image-level** accuracy `0.8099`, macro-F1 `0.8080`, and weighted-F1 `0.8110`. These results are not patient-independent, external, clinical, diagnostic, or medical-probability evidence. The latest recorded regression evidence is **42** Vitest tests, **24** FastAPI tests, and **8** ML/data tests; passing TypeScript/build checks; a clean high-severity production dependency audit; passing browser inference checks; ownership-scoped history/artifact constraints and cursor pagination; a user-approved signed-in derived-artifact retrieval check; server-side rejection of direct Mode B persistence/report requests before application-level upload reads; bounded public-demo requests with expired-key cleanup and an active-key cap; and browser/server upload safety checks. See `docs/TEST_REPORT.md` for methods and boundaries.
 
 ## Current research work
 

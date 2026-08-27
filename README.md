@@ -6,7 +6,7 @@ NeuroInsight AI is a **non-clinical academic demonstration** of explainable 2D b
 
 ## What is available
 
-Mode A performs real experimental four-class 2D classification—glioma, meningioma, pituitary tumour, or no tumour—using the deployed EXP-005 ResNet50 head-only model. The system provides a validation-calibrated model-confidence score, low-confidence/manual-review state, genuine Grad-CAM attribution, and a derived academic PDF. With explicit consent, a signed-in user may save only anonymous result metadata and derived PDF/Grad-CAM artifacts; original uploads are not stored by default.
+Mode A performs real experimental four-class 2D classification—glioma, meningioma, pituitary tumour, or no tumour—using the deployed EXP-005 ResNet50 head-only model. The system provides a validation-calibrated model-confidence score, low-confidence/manual-review state, genuine Grad-CAM attribution, and a derived academic PDF. With explicit consent, a signed-in user may save only account-linked pseudonymous result metadata and derived Mode A PDF/Grad-CAM artifacts; original uploads are not stored by default, and each re-download receives a fresh ownership-checked URL.
 
 On the audited BDNeuro-MRI v7 fixed image-level test split, EXP-005 recorded accuracy `0.8099`, macro-F1 `0.8080`, and weighted-F1 `0.8110`. These are experimental image-level results only, not patient-level, external, clinical, diagnostic, or medical-probability evidence.
 
@@ -25,11 +25,13 @@ pnpm install --frozen-lockfile
 pnpm check
 pnpm test
 pnpm build
+pnpm check:bundle
+pnpm audit --prod --audit-level=high
 cd backend && PYTHONPATH=. pytest -q tests
 cd .. && PYTHONPATH=. pytest -q ml/tests
 ```
 
-The configured inference service is deliberately checked separately from deterministic unit tests: `INFERENCE_API_BASE_URL=https://your-service.example pnpm test:smoke:inference`. Do not put a private URL, signed URL, token, or credential in source control. The Python/API and machine-learning checks are documented in `docs/TEST_REPORT.md`.
+The configured inference service is deliberately checked separately from deterministic unit tests: `INFERENCE_API_BASE_URL=https://your-service.example pnpm test:smoke:inference`. Deterministic local browser checks are `pnpm test:e2e:corrupt-upload`, `pnpm test:e2e:accessibility`, and `pnpm test:e2e:accessibility-routes`; CI starts a local production build for those checks and does not call public inference. Do not put a private URL, signed URL, token, or credential in source control. The Python/API and machine-learning checks are documented in `docs/TEST_REPORT.md`.
 
 Public deployment, data provenance, calibration, privacy, and release boundaries are documented in `docs/PUBLIC_HANDOVER.md`, `DATASET_AUDIT.md`, `EXPERIMENTS.md`, `docs/CALIBRATION_STATUS.md`, `docs/CAPABILITY_MANIFEST.md`, `docs/BRISC_AUDIT.md`, and `docs/OPEN_GATES.md`.
 

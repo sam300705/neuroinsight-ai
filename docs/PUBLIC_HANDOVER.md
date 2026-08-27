@@ -6,6 +6,10 @@
 
 > **Required notice:** “This system is not a medical diagnosis and must not replace a qualified radiologist.”
 
+## Release distinction
+
+The managed public dashboard reflects the earlier owner-approved recovery checkpoint `409f8a70`; it has **not** received the current PR hardening pass. The Vercel inference project remains linked to GitHub: its production target is `main` at `26498b5`, while pull request previews are branch-specific and non-production. The branch-level verification totals recorded below apply to PR #1’s working tree and must not be described as an additional public dashboard publication.
+
 ## What is live
 
 Mode A is a real experimental 2D, four-class brain-MRI image classifier. It returns a predicted research class, a validation-calibrated **model confidence score**, a low-confidence/manual-review state, and a real final-layer Grad-CAM attribution. It can also produce a derived academic PDF report. The published dashboard was verified by submitting one lawful public fixed-split image through the browser; the test asserts safe rendering and deliberately does **not** assert that the model’s class is correct.
@@ -37,22 +41,22 @@ The authoritative data and model evidence are maintained in:
 
 ## Privacy and artifact handling
 
-The browser sends an uploaded image to the external research API only for the requested analysis. The application is designed **not** to store the original MRI upload. If a signed-in user explicitly saves a result, the application retains only anonymous result metadata and derived report or Grad-CAM artifacts. Artifact download lookup requires ownership of the associated history record and issues a fresh signed URL rather than exposing a durable storage path.
+The browser sends an uploaded image to the external research API only for the requested analysis. The application is designed **not** to store the original MRI upload. If a signed-in user explicitly saves a result, the application retains only account-linked pseudonymous result metadata and derived Mode A report or Grad-CAM artifacts. Artifact download lookup requires ownership of the associated history record and issues a fresh signed URL rather than exposing a durable storage path. Deleting a history record revokes application access to its artifact references; it is not a provider-side physical-erasure guarantee.
 
 No raw data, public test image, user credential, or secret is committed to Git.
 
-## Tested release state
+## Current PR verification state
 
 The final regression run passed all of the following:
 
 | Layer | Result |
 |---|---|
-| Web tests | 31 passing tests |
-| FastAPI tests | 12 passing tests |
+| Web tests | 42 passing tests |
+| FastAPI tests | 24 passing tests |
 | ML/data tests | 8 passing tests |
 | TypeScript check | Passed |
 | Production bundle | Passed; non-blocking JavaScript chunk-size warning recorded |
-| Browser checks | Corrupt upload, real Mode A inference, Hindi real inference, focused accessibility, cross-route WCAG 2 A/AA, and published-dashboard real inference all passed |
+| Browser checks | Corrupt upload, focused accessibility, cross-route WCAG 2 A/AA, real Mode A inference, Hindi real inference, and published-dashboard real inference have passed. The deterministic non-network checks now run in CI against a local production build. |
 
 The backend accepted a CORS preflight from the public dashboard origin and rejected an unrelated origin without an allow-origin header.
 

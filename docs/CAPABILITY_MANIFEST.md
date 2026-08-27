@@ -1,6 +1,6 @@
 # Canonical Capability Manifest
 
-**Canonical status date:** 2026-08-23. This is the single status reference for public copy, handover records, and release decisions. Update it only after new evidence is verified.
+**Canonical status date:** 2026-08-27. This is the single status reference for public copy, handover records, and release decisions. Update it only after new evidence is verified.
 
 > **Clinical-use restriction:** “This system is not a medical diagnosis and must not replace a qualified radiologist.”
 
@@ -12,9 +12,9 @@
 | Calibration | **Available** | `docs/CALIBRATION_STATUS.md` | Temperature `0.689875`, abstention `0.55`; no medical probability. |
 | Grad-CAM | **Available** | Browser/API evidence in `docs/TEST_REPORT.md` | Final-layer attribution only; not a tumour mask. |
 | PDF report | **Available** | FastAPI and browser verification | Academic report only; not a clinical report. |
-| Consent-based derived history | **Available and verified** | Signed-in retrieval check in `docs/TEST_REPORT.md` | Stores derived PDF/Grad-CAM and anonymous metadata only; never raw upload bytes. |
+| Consent-based derived history | **Available and verified** | Signed-in retrieval check in `docs/TEST_REPORT.md` | Stores account-linked pseudonymous metadata and derived Mode A PDF/Grad-CAM only; never raw upload bytes, storage keys, or durable download URLs. |
 | Mode B segmentation | **Unavailable by design** | `docs/OPEN_GATES.md` | No full-volume validated model, physical measurements, masks, or 3D result. |
-| Last public verification | **2026-08-22** | `docs/VERIFICATION_LOG.md`, `docs/TEST_REPORT.md` | Public dashboard and exact-origin CORS integration checked. |
+| Last public verification | **2026-08-26** | `docs/VERIFICATION_LOG.md`, `docs/TEST_REPORT.md` | Owner-approved public dashboard recovery, sign-in boundary, public Mode A inference, and Mode B unavailability checked. |
 
 ## Consistency rule
 

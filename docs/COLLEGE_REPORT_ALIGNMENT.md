@@ -23,7 +23,7 @@ The report should present the main contribution as **evidence-aware engineering*
 | Confidence and low-confidence review | **Implemented and verified.** Validation-only temperature scaling chose `T=0.689875`; the abstention threshold is `0.55`. | “The displayed value is a calibrated experimental model-confidence score, not a medical probability; expert review remains required.” |
 | PDF report | **Implemented and verified.** The system creates a two-page research PDF from real results and Grad-CAM. | “The downloadable report is an academic research report, not a clinical report or clinical finding.” |
 | English/Hindi chatbot | **Implemented with a safe offline FAQ.** It provides contextual educational replies and refuses diagnosis or treatment advice. | “The bilingual assistant is an offline, safety-first FAQ; it is not a live clinical LLM adviser.” |
-| Scan history | **Implemented and verified.** With consent, only anonymous metadata, the derived PDF, and real Grad-CAM can be saved privately. | “Original MRI uploads are not stored by default; protected history contains consented derived artifacts only.” |
+| Scan history | **Implemented and verified.** With consent, only account-linked pseudonymous metadata, the derived Mode A PDF, and real Grad-CAM can be saved privately. | “Original MRI uploads are not stored by default; protected history contains consented derived artifacts only and uses fresh ownership-checked downloads.” |
 | FastAPI and React dashboard | **Implemented and deployed.** The public dashboard connects to a CORS-restricted ONNX Runtime FastAPI service. | “The system is a deployed academic web demonstration with health, readiness, validation, inference, report, and protected-history paths.” |
 
 ## What is strongest in the supplied materials
@@ -41,7 +41,7 @@ The presentation should replace broad claims that the system gives doctors a “
 | Calibration and abstention | `docs/CALIBRATION_STATUS.md`, including validation-only temperature scaling and the abstention boundary. |
 | Live deployment | Public dashboard plus a free Vercel ONNX inference service with exact-origin CORS restrictions. |
 | Honest failure evidence | The test log records a lawful public glioma-labelled test image that the model predicted as meningioma; it is retained as an experimental error, not hidden.[2] |
-| Testing and accessibility | **22** Vitest tests, **12** FastAPI tests, **4** ML/data tests, saved real-inference browser checks, English/Hindi flow checks, and WCAG 2 A/AA route audits.[2] |
+| Testing and accessibility | **42** Vitest tests, **24** FastAPI tests, **8** ML/data tests, deterministic corrupt-upload and accessibility browser checks, saved real-inference/English-Hindi flow checks, and WCAG 2 A/AA route audits.[2] |
 | Privacy and history | User-approved end-to-end verification confirms that only derived metadata, PDF, and Grad-CAM were saved; the original upload was not stored and the temporary record was deleted.[2] |
 
 ## Suggested conclusion and future scope
