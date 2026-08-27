@@ -65,3 +65,9 @@ The current public managed dashboard still shows the owner-approved recovery rel
 ## 2026-08-27 — Final artifact-initialization boundary
 
 The final branch preview deployment `dpl_BkMcnXKW4iVfuEvWh6KXh172fesR` is `READY` and its capability endpoint returns structured `200` data rather than a `500`. It reports both modes unavailable because the startup guard logged `classifier_initialization_failed:error_type=ValueError`. Read-only HTTPS header checks confirmed that the configured ONNX, metadata, and calibration URLs respond successfully; in-memory checks confirmed the committed metadata and calibration SHA-256 values. The 94 MB ONNX checkpoint was not downloaded or replaced because this final review is limited to metadata/manifest verification and must not alter a model artifact. The failure is therefore recorded as an owner-controlled release-readiness gate before any new Vercel production deployment, while the existing production endpoint remains independently available.
+
+## 2026-08-27 — Final PR branch verification
+
+GitHub Actions pull-request run [`33045574801`](https://github.com/sam300705/neuroinsight-ai/actions/runs/33045574801) passed at branch commit `d2441404cdfe6473e05d4c64d3361abcfc068066`. It ran frozen installation, TypeScript, **45** Vitest regressions, production build, the 768,000-byte initial-bundle guard, production dependency audit, raw-artifact hygiene, deterministic local production-browser checks, **25** FastAPI regressions, and **8** ML/data regressions.
+
+The automatic Vercel preview for the same exact branch commit, `dpl_8XSnrDvFQSmTDivXjrMH8MqdAhKh`, reached `READY`. Its deployment-specific `/api/v1/model-info` endpoint returned structured `200` capability data: Mode A remains safely `unconfigured`/`unavailable` under the artifact-initialization gate, and Mode B remains `unconfigured`/`unavailable`. No test uploaded an image, no production target changed, and no managed-dashboard publication occurred.
