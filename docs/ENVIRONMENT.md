@@ -4,7 +4,7 @@ The managed application receives its database, authentication, object-storage, a
 
 | Setting | Purpose | Required for |
 |---|---|---|
-| Platform database connection | Persist anonymized scan history and artifact references | History features |
+| Platform database connection | Persist account-linked pseudonymous scan-history metadata and derived-artifact references | History features |
 | Platform object-storage credentials | Store derived Mode A reports and Grad-CAM heatmaps only | Authenticated artifact re-download |
 | Built-in language-model credentials | Optional safe contextual-chat enhancement | Optional; offline FAQ remains available without it |
 | `VITE_INFERENCE_API_BASE_URL` | Public base URL of a separately deployed FastAPI service | Live model inference only |
