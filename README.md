@@ -10,6 +10,10 @@ Mode A performs real experimental four-class 2D classification—glioma, meningi
 
 On the audited BDNeuro-MRI v7 fixed image-level test split, EXP-005 recorded accuracy `0.8099`, macro-F1 `0.8080`, and weighted-F1 `0.8110`. These are experimental image-level results only, not patient-level, external, clinical, diagnostic, or medical-probability evidence.
 
+### Optional research explanation
+
+The **Research Explanation Assistant** explains the experimental result’s research scope, confidence/calibration, abstention, Grad-CAM limitations, methodology, report behavior, and Mode B unavailability in English or Hindi. It is not a medical advisor and cannot change any model output. The shipped configuration uses the deterministic offline FAQ. An owner may later configure **one** server-side OpenAI *or* Gemini provider, but only after the privacy and manual-gate review in [`docs/RESEARCH_ASSISTANT_TECHNICAL_NOTE.md`](docs/RESEARCH_ASSISTANT_TECHNICAL_NOTE.md); browser code never receives a provider key or imaging payload.
+
 ## What is unavailable
 
 Mode B segmentation is intentionally unavailable. The application does not return tumour masks, physical measurements, volume, or 3D geometry because no defensible full-volume segmentation model and held-out evaluation are deployed. Grad-CAM must never be interpreted as a segmentation mask.

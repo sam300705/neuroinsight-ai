@@ -14,7 +14,14 @@ The managed application receives its database, authentication, object-storage, a
 | `CLASSIFICATION_ONNX_METADATA_URL`, `CLASSIFICATION_ONNX_METADATA_SHA256` | HTTPS location and fixed SHA-256 for checkpoint metadata | Verified external Mode A deployment only |
 | `CLASSIFICATION_CALIBRATION_URL`, `CLASSIFICATION_CALIBRATION_SHA256` | HTTPS location and fixed SHA-256 for validation-only calibration metadata | Verified external Mode A deployment only |
 | `MODEL_CACHE_DIR` | Optional writable cache location for checksum-verified inference artifacts | Optional FastAPI deployment configuration |
+| `AI_PROVIDER` | Select exactly one optional server-side explanation provider: `openai` or `gemini` | Optional; otherwise deterministic offline FAQ only |
+| `OPENAI_API_KEY`, `OPENAI_MODEL` | Server-only OpenAI credential and structured-output model identifier | Optional only when `AI_PROVIDER=openai` |
+| `GEMINI_API_KEY`, `GEMINI_MODEL` | Server-only Gemini credential and structured-output model identifier | Optional only when `AI_PROVIDER=gemini` |
 
 The service has **no configured `INFERENCE_SERVICE_TOKEN`**. It relies on exact CORS allowlisting and accepts only intended public academic-demo traffic; do not document a token that the runtime does not verify. `MAX_UPLOAD_BYTES` is a source-controlled 50 MB FastAPI limit, not an environment variable. The service also rejects a multipart request over 51 MB, reads no more than 50 MB of file content, and rejects images above 12 megapixels or with incompatible channel modes.
 
 The dashboard remains usable without the inference settings, presenting explicit model-unavailable states and the offline FAQ fallback. Supplying runtime variables does not promote a new model, enable segmentation, store raw MRI uploads, or remove the permanent non-diagnostic boundary.
+
+## Optional Research Explanation Assistant
+
+The assistant is **disabled by default**: `AI_PROVIDER` must select one provider and that provider must have both a server-side key and an explicit model identifier. It never selects the other provider automatically. A missing key/model, malformed response, timeout, safety-contract failure, or provider failure returns the existing deterministic offline FAQ instead. No provider key belongs in client code, `VITE_*` variables, source control, or a committed `.env` file. This implementation does not configure a production credential or enable either provider.

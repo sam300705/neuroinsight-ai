@@ -17,9 +17,20 @@ flowchart LR
   O --> C[Temperature calibration + abstention]
   C --> G[Grad-CAM attribution]
   G --> B
+  B -->|bounded de-identified question + derived fields only| R[FastAPI research explanation endpoint]
+  R --> P{One explicitly configured provider?}
+  P -->|No or unavailable| Q[Deterministic offline FAQ]
+  P -->|OpenAI or Gemini only| J[Provider structured JSON response]
+  J --> K[Server schema + safety validation]
+  K --> B
+  Q --> B
 ```
 
 Raw uploads are processed in memory and are not registered as history artifacts. Authenticated users may opt in to saving only returned Mode A metadata, reports, and real Grad-CAM outputs.
+
+## Optional Research Explanation Assistant
+
+The browser’s assistant request is bounded and allowlisted: question, language, purpose, fixed EXP-005 model version when present, predicted class, model-confidence score, calibration flag, manual-review flag, Grad-CAM availability, uncertainty reason, and `measurement_available=false`. It never sends raw MRI/DICOM/NIfTI bytes, previews, Grad-CAM binary/base64, filename, scan ID, account identity, email, signed URL, storage key, session token, or provider secret. The FastAPI endpoint rejects unsafe diagnosis/treatment and prompt-injection requests before any provider call; it sends a single configured provider a strict JSON-schema request, validates the response again server-side, and falls back to the deterministic offline FAQ on any uncertainty. The assistant cannot change a classifier output, bypass abstention, create a Mode B artifact, or activate Mode B.
 
 ## ML lifecycle
 

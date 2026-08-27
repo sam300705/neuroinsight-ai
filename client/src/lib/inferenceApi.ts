@@ -33,6 +33,24 @@ export type InferenceValidationResult =
   | { ok: true; response: InferenceAnalysisResponse }
   | { ok: false; message: string };
 
+export type ResearchExplanationRequest = {
+  question: string;
+  language: "en" | "hi";
+  purpose?: "question" | "result_summary";
+  predicted_class?: InferenceAnalysisResponse["predicted_class"];
+  model_version?: "bdneuro-v7-resnet50-head-only-exp005";
+  model_confidence_score?: number | null;
+  calibrated?: boolean;
+  manual_review_recommended?: boolean;
+  grad_cam_available?: boolean;
+  uncertainty_reason?: string | null;
+  measurement_available?: false;
+};
+
+export type ResearchExplanationResult =
+  | { ok: true; answer: string; source: "offline_faq" | "openai" | "gemini"; category: string; medical_advice_refused: boolean; manual_review_reminder: boolean; disclaimer_required: boolean }
+  | { ok: false; message: string };
+
 function safeMessage(value: unknown, fallback: string) {
   if (typeof value === "string" && value.trim()) return value;
   if (value && typeof value === "object" && "detail" in value) {
@@ -120,5 +138,39 @@ export async function generateResearchReport(
     return { ok: true, base64: bytesToBase64(bytes) };
   } catch {
     return { ok: false, message: "The validation service could not be reached to generate the derived research report." };
+  }
+}
+
+export async function askResearchExplanation(
+  request: ResearchExplanationRequest,
+  fetchImpl: typeof fetch = fetch,
+): Promise<ResearchExplanationResult> {
+  const baseUrl = apiBaseUrl();
+  if (!baseUrl) return { ok: false, message: "The research explanation service is not configured." };
+  try {
+    const response = await fetchImpl(`${baseUrl}/api/v1/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    });
+    const payload: unknown = await response.json().catch(() => null);
+    if (!response.ok || !payload || typeof payload !== "object") {
+      return { ok: false, message: safeMessage(payload, "The research explanation service is unavailable.") };
+    }
+    const candidate = payload as { answer?: unknown; source?: unknown; category?: unknown; medical_advice_refused?: unknown; manual_review_reminder?: unknown; disclaimer_required?: unknown };
+    if (
+      typeof candidate.answer !== "string" ||
+      !candidate.answer.trim() ||
+      !["offline_faq", "openai", "gemini"].includes(String(candidate.source)) ||
+      typeof candidate.category !== "string" ||
+      typeof candidate.medical_advice_refused !== "boolean" ||
+      typeof candidate.manual_review_reminder !== "boolean" ||
+      typeof candidate.disclaimer_required !== "boolean"
+    ) {
+      return { ok: false, message: "The research explanation response was incomplete." };
+    }
+    return { ok: true, answer: candidate.answer, source: candidate.source as "offline_faq" | "openai" | "gemini", category: candidate.category, medical_advice_refused: candidate.medical_advice_refused, manual_review_reminder: candidate.manual_review_reminder, disclaimer_required: candidate.disclaimer_required };
+  } catch {
+    return { ok: false, message: "The research explanation service could not be reached." };
   }
 }
