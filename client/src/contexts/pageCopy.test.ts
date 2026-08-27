@@ -34,6 +34,8 @@ describe("dashboard bilingual page copy", () => {
       expect(results.saveTitle).not.toHaveLength(0);
       expect(results.saveDetail).not.toHaveLength(0);
       expect(results.signInSave).not.toHaveLength(0);
+      expect(results.reportUnavailableTitle).not.toHaveLength(0);
+      expect(results.reportUnavailableDetail).not.toHaveLength(0);
     }
     expect(copyFor("hi").results.saveTitle).toContain("आर्टिफैक्ट");
   });

@@ -73,6 +73,16 @@ describe("validateWithInferenceService", () => {
     expect(JSON.stringify(JSON.parse(fetchMock.mock.calls[0][1].body))).not.toMatch(/predicted_class|confidence|model_version|scan_id|warnings|limitations/i);
   });
 
+  it("does not request, retry, or fabricate a report when the server did not issue a receipt", async () => {
+    vi.stubEnv("VITE_INFERENCE_API_BASE_URL", "https://inference.example");
+    const fetchMock = vi.fn();
+
+    const result = await generateResearchReport({ ...realResponse, analysis_receipt: null }, fetchMock);
+
+    expect(result).toEqual({ ok: false, message: "This result does not include a current server-issued report receipt, so a derived report cannot be generated." });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("sends only the explicitly allowlisted de-identified assistant fields from the browser", async () => {
     vi.stubEnv("VITE_INFERENCE_API_BASE_URL", "https://inference.example");
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({

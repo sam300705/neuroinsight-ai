@@ -19,7 +19,7 @@ Mode A is a real experimental 2D, four-class brain-MRI image classifier. It retu
 | Public dashboard | Live | Research and education only |
 | HTTPS Mode A API | Live | Experimental image-level classification only |
 | Real inference and Grad-CAM | Verified | Grad-CAM is coarse attribution, not a tumor boundary |
-| PDF report | Verified | Derived research report, not a clinical report |
+| PDF report | Verified on the earlier public recovery release | Derived research report, not a clinical report. The current PR requires a server-issued receipt and production signing configuration before any future release can offer reports. |
 | CORS | Verified | Allows only the published origin and localhost development origins |
 | Mode B segmentation | Intentionally unavailable | No validated full-volume model is deployed |
 | Private history re-download | Verified with a signed-in test session | Ownership-gated signed report retrieval; original uploads are never stored |
@@ -47,18 +47,31 @@ No raw data, public test image, user credential, or secret is committed to Git.
 
 ## Current PR verification state
 
+The public dashboard and production inference target remain on the earlier owner-approved release. The following totals apply only to PR #1 and its non-production Git previews until the owner separately approves merge and release.
+
 The final regression run passed all of the following:
 
 | Layer | Result |
 |---|---|
-| Web tests | 42 passing tests |
-| FastAPI tests | 24 passing tests |
+| Web tests | **48 passing tests** |
+| FastAPI tests | **100 passing tests** |
 | ML/data tests | 8 passing tests |
 | TypeScript check | Passed |
-| Production bundle | Passed; non-blocking JavaScript chunk-size warning recorded |
-| Browser checks | Corrupt upload, focused accessibility, cross-route WCAG 2 A/AA, real Mode A inference, Hindi real inference, and published-dashboard real inference have passed. The deterministic non-network checks now run in CI against a local production build. |
+| Coverage | Passed with selected TypeScript/Python critical-module thresholds |
+| Production bundle | Passed; initial bundle is 697,072 bytes under the 768,000-byte guard |
+| Dependency audits and SBOM | Production Node audit and locked Python audit passed; CI generates a CycloneDX SBOM and runs a credential-free backend container smoke test |
+| Browser checks | Corrupt-upload, focused accessibility, and cross-route WCAG 2 A/AA checks passed against a local production build. Historical live Mode A and signed-in artifact checks remain evidence for the earlier public release, not the current branch. |
 
 The backend accepted a CORS preflight from the public dashboard origin and rejected an unrelated origin without an allow-origin header.
+
+## PR #1 report-receipt release consequence
+
+PR #1 treats report integrity as a user-visible release decision. If this PR reaches a production target without `ANALYSIS_RECEIPT_SECRET`, Mode A classification remains expected to work when its model configuration is intact, but no report receipt is issued and `/api/v1/report` returns `503`. The Results page now makes that absence explicit: it offers neither a PDF nor a derived-artifact save action and does not retry or manufacture a download.
+
+There are exactly two valid owner choices before any production promotion:
+
+1. **Preserve PDF reports.** Provision a strong server-only `ANALYSIS_RECEIPT_SECRET` outside Git, browser code, and logs; verify a controlled non-production classify → receipt → report flow, replay behavior within its documented process-local scope, and Grad-CAM digest binding; then decide separately whether to release.
+2. **Intentionally disable reports.** Release without that secret only after retaining the explicit unavailable report state and updating all relevant product copy so users are not told that PDF reports are available.
 
 ## Operational safeguards
 

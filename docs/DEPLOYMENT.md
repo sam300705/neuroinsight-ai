@@ -6,7 +6,7 @@ The managed Node dashboard and the Python validation service are intentionally d
 |---|---|---|
 | React + tRPC dashboard | Managed Node application | It can be published from the project interface after review of a saved checkpoint. |
 | Scan metadata and derived artifact references | Managed database plus preconfigured object storage | History procedures require an authenticated account; ownership is checked before a fresh signed download URL is issued for a derived Mode A report or Grad-CAM. Raw scans are not persisted. |
-| FastAPI validation/report service | Vercel FastAPI function using ONNX Runtime | A separate HTTPS service performs configured Mode A experimental inference and generates derived PDF reports. Mode B remains unavailable. |
+| FastAPI validation/report service | Vercel FastAPI function using ONNX Runtime | A separate HTTPS service performs configured Mode A experimental inference. In the current PR, derived PDF reports additionally require a valid server-issued receipt and owner-controlled signing configuration. Mode B remains unavailable. |
 | Experimental classification checkpoint and calibration metadata | External to the repository and Vercel function bundle | SHA-256-verified HTTPS retrieval is used at runtime. Raw MRI data and weights are not committed to Git. |
 
 ## Dashboard configuration
@@ -44,7 +44,7 @@ The local container intentionally contains no model weight files. In the verifie
 | Model information | `curl -fsS https://<verified-service>/api/v1/model-info` | Mode A marked `available`; Mode B explicitly `unavailable`. |
 | Corrupted, oversized, or incompatible upload | POST a malformed PNG/JPEG, an over-limit request, or an unsupported channel format to `/api/v1/classify` | HTTP `422`; no simulated prediction is returned. |
 | Valid public research image | Submit one lawful, non-sensitive fixed-split public JPEG or PNG | HTTP `200` with the actual experimental class, model confidence score, calibrated state, Grad-CAM payload, and mandatory non-clinical warnings. This is image-level experimental evidence only. |
-| Derived report | POST that returned **Mode A** analysis and Grad-CAM payload to `/api/v1/report` | A valid `%PDF` document containing the returned metadata and real Grad-CAM attribution; no raw MRI is embedded or stored by the dashboard. Mode B report requests and segmentation overlays return HTTP `422` until a verified full-volume release exists. |
+| Derived report | POST only a current server-issued Mode A receipt and its matching Grad-CAM payload to `/api/v1/report` | With owner-configured signing, a valid `%PDF` contains the verified receipt metadata and real Grad-CAM attribution; no raw MRI is embedded or stored by the dashboard. Without signing, the route returns `503` and the branch dashboard offers no report action. Mode B report requests and segmentation overlays return HTTP `422` until a verified full-volume release exists. |
 | Dashboard integration | Set `VITE_INFERENCE_API_BASE_URL`, restart the managed dashboard, and upload the same file | The UI surfaces the authoritative response. Authenticated users can consent to save metadata, the derived PDF, and Grad-CAM to protected history; the original MRI upload is not saved. |
 
 ## Publication boundary
@@ -62,3 +62,9 @@ For any **future** managed-dashboard publication, first obtain explicit owner ap
 The authorized dashboard is published at `https://neuroaiapp-gtbxy6cw.manus.space`. The Vercel backend CORS allowlist now contains this exact HTTPS origin plus `http://localhost:3000` and `http://127.0.0.1:3000` only. A preflight request from the published origin returned HTTP `200` with `access-control-allow-origin: https://neuroaiapp-gtbxy6cw.manus.space`; an unrelated HTTPS origin returned HTTP `400` with no allow-origin header. The dashboard build configuration points to the corresponding verified backend deployment and must be rebuilt after this environment update.
 
 The dashboard was rebuilt after the environment update. A browser-level real-inference test against `https://neuroaiapp-gtbxy6cw.manus.space` passed: one lawful public fixed-split image travelled through the published dashboard, the experimental result rendered, and the protected-save consent control appeared. A separate signed-in check saved only derived Mode A metadata/PDF/Grad-CAM, retrieved the report through a fresh ownership-gated URL, and deleted the temporary record. These checks do not establish model correctness or clinical validity.
+
+## PR #1 report-signing decision before any future promotion
+
+The current public deployment predates PR #1’s receipt requirement. Production presence of `ANALYSIS_RECEIPT_SECRET` is **unknown and owner-controlled**: the authorized read-only project metadata does not expose environment-variable presence, and no secret inspection or configuration change was performed.
+
+The owner has exactly two release choices. **Option A — preserve PDF reports:** provision a strong server-only `ANALYSIS_RECEIPT_SECRET`, then verify a controlled non-production Mode A classification, receipt issuance, PDF generation, process-local replay behavior, and Grad-CAM binding before separately approving production. **Option B — intentionally disable reports:** promote without a secret only when the dashboard keeps its clear report-unavailable state and product documentation no longer advertises current PDF availability. Neither option authorizes automatic promotion.

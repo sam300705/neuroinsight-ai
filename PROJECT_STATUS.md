@@ -12,7 +12,7 @@
 | Mode A four-class 2D classification | **Publicly available** | Experimental, fixed-split **image-level** classification only. |
 | Model version | **EXP-005** | ResNet50 head-only model using BDNeuro-MRI v7. |
 | Calibration and abstention | **Available** | Validation-only temperature scaling (`T=0.689875`) and a `0.55` abstention threshold; the displayed score is not a medical probability. |
-| Grad-CAM and PDF | **Available** | Both are generated from real Mode A inference; Grad-CAM is attribution, not segmentation. |
+| Grad-CAM and PDF | **Verified on earlier public recovery; receipt-dependent in current PR** | Both derive from real Mode A inference; Grad-CAM is attribution, not segmentation. A PR #1 release without the owner-controlled signing secret disables PDF generation fail-closed. |
 | Private derived-artifact history | **Verified** | With consent, saves account-linked pseudonymous metadata plus derived Mode A PDF/Grad-CAM only; each retrieval receives a fresh ownership-gated URL. |
 | Mode B segmentation | **Intentionally unavailable** | No full-volume model with defensible held-out validation is deployed. |
 
@@ -20,7 +20,7 @@ The public dashboard is <https://neuroaiapp-gtbxy6cw.manus.space>. Its CORS-rest
 
 ## Verified evidence
 
-EXP-005 achieved held-out fixed-split **image-level** accuracy `0.8099`, macro-F1 `0.8080`, and weighted-F1 `0.8110`. These results are not patient-independent, external, clinical, diagnostic, or medical-probability evidence. The latest recorded regression evidence is **45** Vitest tests, **25** FastAPI tests, and **8** ML/data tests; passing TypeScript/build checks; a clean high-severity production dependency audit; passing browser inference checks; ownership-scoped history/artifact constraints and cursor pagination; a user-approved signed-in derived-artifact retrieval check; server-side rejection of direct Mode B persistence/report requests before application-level upload reads; strict report-PDF/Grad-CAM-PNG artifact pairing; classification-only history listing; bounded public-demo requests with expired-key cleanup and an active-key cap; and browser/server upload safety checks. See `docs/TEST_REPORT.md` for methods and boundaries.
+EXP-005 achieved held-out fixed-split **image-level** accuracy `0.8099`, macro-F1 `0.8080`, and weighted-F1 `0.8110`. These results are not patient-independent, external, clinical, diagnostic, or medical-probability evidence. Current branch evidence is **48** Vitest tests, **100** FastAPI tests, and **8** ML/data tests; passing TypeScript/build/coverage/bundle gates; clean production Node and locked Python dependency audits; SBOM/container-smoke CI checks; deterministic browser checks; receipt-protected report integrity; and strict Mode B failure boundaries. These current-PR totals do not mean the public dashboard has been republished. Earlier public-recovery browser inference and signed-in artifact-retrieval evidence remains historical release evidence. See `docs/TEST_REPORT.md` for methods and boundaries.
 
 ## Current research work
 
