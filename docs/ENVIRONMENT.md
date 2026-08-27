@@ -17,6 +17,9 @@ The managed application receives its database, authentication, object-storage, a
 | `AI_PROVIDER` | Select exactly one optional server-side explanation provider: `openai` or `gemini` | Optional; otherwise deterministic offline FAQ only |
 | `OPENAI_API_KEY`, `OPENAI_MODEL` | Server-only OpenAI credential and structured-output model identifier | Optional only when `AI_PROVIDER=openai` |
 | `GEMINI_API_KEY`, `GEMINI_MODEL` | Server-only Gemini credential and structured-output model identifier | Optional only when `AI_PROVIDER=gemini` |
+| `ANALYSIS_RECEIPT_SECRET` | At least 32-byte server-only secret used to issue and verify short-lived Mode A report receipts | Required before any derived report can be generated; reports fail closed when absent |
+| `ANALYSIS_RECEIPT_TTL_SECONDS` | Receipt lifetime, clamped to 900 seconds or less | Optional; defaults to 300 seconds |
+| `MODEL_ARTIFACT_ALLOWED_HOSTS` | Optional comma-separated HTTPS hostname allowlist for EXP-005 artifact retrieval | Optional additional startup hardening; when set, both initial and redirect target hosts must match |
 
 The service has **no configured `INFERENCE_SERVICE_TOKEN`**. It relies on exact CORS allowlisting and accepts only intended public academic-demo traffic; do not document a token that the runtime does not verify. `MAX_UPLOAD_BYTES` is a source-controlled 50 MB FastAPI limit, not an environment variable. The service also rejects a multipart request over 51 MB, reads no more than 50 MB of file content, and rejects images above 12 megapixels or with incompatible channel modes.
 
@@ -25,3 +28,5 @@ The dashboard remains usable without the inference settings, presenting explicit
 ## Optional Research Explanation Assistant
 
 The assistant is **disabled by default**: `AI_PROVIDER` must select one provider and that provider must have both a server-side key and an explicit model identifier. It never selects the other provider automatically. A missing key/model, malformed response, timeout, safety-contract failure, or provider failure returns the existing deterministic offline FAQ instead. When deliberately configured, the raw OpenAI Responses and Gemini Interactions requests each send `store: false`; this is a request-level stateless setting, not a claim about provider-wide retention. No provider key belongs in client code, `VITE_*` variables, source control, or a committed `.env` file. This implementation does not configure a production credential or enable either provider.
+
+The report endpoint is **unavailable by design** until `ANALYSIS_RECEIPT_SECRET` is configured outside source control. A receipt covers the server-issued reportable Mode A analysis, model version, scan ID, issue/expiry time, and Grad-CAM SHA-256; it is single-use only within one process and must not be described as distributed replay protection or non-repudiation.

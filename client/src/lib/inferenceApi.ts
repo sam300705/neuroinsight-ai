@@ -25,6 +25,7 @@ export type InferenceAnalysisResponse = {
   uncertainty_reason?: string | null;
   measurement: InferenceMeasurement;
   grad_cam_png_base64?: string | null;
+  analysis_receipt?: string | null;
   warnings: string[];
   limitations: string[];
 };
@@ -123,12 +124,13 @@ export async function generateResearchReport(
 ): Promise<{ ok: true; base64: string } | { ok: false; message: string }> {
   const baseUrl = apiBaseUrl();
   if (!baseUrl) return { ok: false, message: "The validation service is not configured, so no derived report can be generated." };
+  if (!analysis.analysis_receipt) return { ok: false, message: "This result does not include a current server-issued report receipt, so a derived report cannot be generated." };
 
   try {
     const response = await fetchImpl(`${baseUrl}/api/v1/report`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ analysis, grad_cam_png_base64: analysis.grad_cam_png_base64 ?? null }),
+      body: JSON.stringify({ analysis_receipt: analysis.analysis_receipt, grad_cam_png_base64: analysis.grad_cam_png_base64 ?? null }),
     });
     if (!response.ok) return { ok: false, message: "The validation service could not generate the derived research report." };
     const bytes = new Uint8Array(await response.arrayBuffer());

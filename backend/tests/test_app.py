@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from io import BytesIO
 
 import base64
@@ -12,6 +13,7 @@ from PIL import Image
 
 from neuroinsight_api.app import app
 import neuroinsight_api.app as app_module
+from neuroinsight_api.analysis_receipts import ReceiptReplayGuard, issue_analysis_receipt
 from neuroinsight_api.rate_limit import FixedWindowRateLimiter
 from neuroinsight_api.schemas import AnalysisMode
 from neuroinsight_api.upload_validation import UploadValidationError, validate_upload
@@ -226,6 +228,16 @@ def test_chat_rejects_unallowlisted_raw_or_identity_fields_before_the_provider_b
     assert "extra_forbidden" in response.text
 
 
+def test_chat_rejects_excessively_nested_or_control_character_json_before_provider_boundary():
+    nested = {"question": "Explain confidence", "context": {"nested": {"raw": "not allowed"}}}
+    control_character = client.post("/api/v1/chat", content=b'{"question":"Explain\\u0000confidence"}', headers={"content-type": "application/json"})
+    response = client.post("/api/v1/chat", json=nested)
+    assert response.status_code == 422
+    assert control_character.status_code in {200, 422}
+    if control_character.status_code == 200:
+        assert control_character.json()["source"] == "offline_faq"
+
+
 def test_chat_has_an_independent_lower_process_local_limit(monkeypatch):
     monkeypatch.setattr(app_module, "assistant_request_limiter", FixedWindowRateLimiter(window_seconds=60, max_requests=1))
     first = client.post("/api/v1/chat", json={"question": "Explain confidence"})
@@ -251,13 +263,21 @@ def test_selected_but_keyless_provider_starts_and_serves_offline_faq(monkeypatch
 
 
 def test_classification_pdf_report_declares_academic_scope_and_unavailable_measurements():
-    tiny_png = base64.b64encode(png_bytes()).decode("ascii")
-    response = client.post("/api/v1/report", json={
-        "analysis": {
-            "request_id": "test-request", "scan_id": "d1fd69b2-62fa-4cbf-bec2-73fe6d12a6fe", "mode": "classification", "status": "unavailable", "model_version": "unconfigured", "processing_time_ms": 4, "manual_review_recommended": True,
-            "measurement": {"kind": "unavailable", "metadata_confirmed": False, "limitation": "Classification produces no segmentation mask or physical measurement."}, "warnings": ["No verified model artifact is configured."], "limitations": ["Academic and research use only."],
-        }, "grad_cam_png_base64": tiny_png,
-    })
+    from neuroinsight_api.schemas import AnalysisResponse, Measurement
+    tiny_png = png_bytes()
+    analysis = AnalysisResponse(
+        request_id="test-request", scan_id="d1fd69b2-62fa-4cbf-bec2-73fe6d12a6fe", mode="classification", status="complete", model_version="bdneuro-v7-resnet50-head-only-exp005", processing_time_ms=4, manual_review_recommended=True,
+        predicted_class="glioma", model_confidence_score=0.7, calibrated=True,
+        measurement=Measurement(kind="unavailable", metadata_confirmed=False, limitation="Classification produces no segmentation mask or physical measurement."),
+        grad_cam_png_base64=base64.b64encode(tiny_png).decode("ascii"), warnings=["Experimental academic result."], limitations=["Academic and research use only."],
+    )
+    receipt = issue_analysis_receipt(analysis, secret=b"report-endpoint-test-secret-that-is-at-least-thirty-two-bytes")
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setenv("ANALYSIS_RECEIPT_SECRET", "report-endpoint-test-secret-that-is-at-least-thirty-two-bytes")
+    try:
+        response = client.post("/api/v1/report", json={"analysis_receipt": receipt, "grad_cam_png_base64": analysis.grad_cam_png_base64})
+    finally:
+        monkeypatch.undo()
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/pdf")
     assert response.content.startswith(b"%PDF")
@@ -271,18 +291,68 @@ def test_classification_pdf_report_declares_academic_scope_and_unavailable_measu
 
 
 def test_report_rejects_unavailable_mode_b_and_synthetic_segmentation_overlays():
-    analysis = {
-        "request_id": "test-request", "scan_id": "d1fd69b2-62fa-4cbf-bec2-73fe6d12a6fe", "mode": "segmentation", "status": "unavailable", "model_version": "unconfigured", "processing_time_ms": 4, "manual_review_recommended": True,
-        "measurement": {"kind": "unavailable", "metadata_confirmed": False, "limitation": "No mask was generated."}, "warnings": ["No verified model artifact is configured."], "limitations": ["Academic and research use only."],
-    }
-    mode_b = client.post("/api/v1/report", json={"analysis": analysis})
-    assert mode_b.status_code == 422
-    assert "Mode B reports remain unavailable" in mode_b.json()["detail"]
+    missing_secret = client.post("/api/v1/report", json={"analysis_receipt": "v1.aaaaaaaaaaaaaa.bbbbbbbbbbbbb"})
+    assert missing_secret.status_code == 503
 
-    classification = {**analysis, "mode": "classification"}
-    synthetic_overlay = client.post("/api/v1/report", json={"analysis": classification, "segmentation_png_base64": base64.b64encode(png_bytes()).decode("ascii")})
+    synthetic_overlay = client.post("/api/v1/report", json={"analysis_receipt": "v1.aaaaaaaaaaaaaa.bbbbbbbbbbbbb", "segmentation_png_base64": base64.b64encode(png_bytes()).decode("ascii")})
     assert synthetic_overlay.status_code == 422
     assert "Segmentation overlays cannot be included" in synthetic_overlay.json()["detail"]
+
+
+def test_report_rejects_client_analysis_mutation_and_replayed_receipts(monkeypatch):
+    import neuroinsight_api.analysis_receipts as receipt_module
+    from neuroinsight_api.schemas import AnalysisResponse, Measurement
+    secret = "replay-endpoint-test-secret-that-is-at-least-thirty-two-bytes"
+    monkeypatch.setenv("ANALYSIS_RECEIPT_SECRET", secret)
+    monkeypatch.setattr(receipt_module, "receipt_replay_guard", ReceiptReplayGuard())
+    image = png_bytes()
+    analysis = AnalysisResponse(
+        request_id="test-request", scan_id="d1fd69b2-62fa-4cbf-bec2-73fe6d12a6fe", mode="classification", status="complete", model_version="bdneuro-v7-resnet50-head-only-exp005", processing_time_ms=4, manual_review_recommended=True,
+        predicted_class="glioma", model_confidence_score=0.7, calibrated=True,
+        measurement=Measurement(kind="unavailable", metadata_confirmed=False, limitation="Classification produces no segmentation mask or physical measurement."),
+        grad_cam_png_base64=base64.b64encode(image).decode("ascii"), warnings=["Experimental academic result."], limitations=["Academic and research use only."],
+    )
+    receipt = issue_analysis_receipt(analysis)
+    payload = {"analysis_receipt": receipt, "grad_cam_png_base64": analysis.grad_cam_png_base64}
+    first = client.post("/api/v1/report", json=payload)
+    replay = client.post("/api/v1/report", json=payload)
+    tampered_fields = client.post("/api/v1/report", json={**payload, "analysis": {"predicted_class": "no_tumor"}})
+    assert first.status_code == 200
+    assert replay.status_code == 409
+    assert tampered_fields.status_code == 422
+
+
+def test_report_endpoint_rejects_tampered_expired_wrong_secret_and_mode_b_receipts(monkeypatch):
+    import neuroinsight_api.analysis_receipts as receipt_module
+    from neuroinsight_api.schemas import AnalysisResponse, Measurement
+
+    secret = b"endpoint-receipt-test-secret-that-is-at-least-thirty-two-bytes"
+    monkeypatch.setenv("ANALYSIS_RECEIPT_SECRET", secret.decode("ascii"))
+    monkeypatch.setattr(receipt_module, "receipt_replay_guard", ReceiptReplayGuard())
+    grad_cam = png_bytes()
+    analysis = AnalysisResponse(
+        request_id="test-request", scan_id="d1fd69b2-62fa-4cbf-bec2-73fe6d12a6fe", mode="classification", status="complete", model_version="bdneuro-v7-resnet50-head-only-exp005", processing_time_ms=4, manual_review_recommended=True,
+        predicted_class="glioma", model_confidence_score=0.7, calibrated=True,
+        measurement=Measurement(kind="unavailable", metadata_confirmed=False, limitation="Classification produces no segmentation mask or physical measurement."),
+        grad_cam_png_base64=base64.b64encode(grad_cam).decode("ascii"), warnings=["Experimental academic result."], limitations=["Academic and research use only."],
+    )
+    receipt = issue_analysis_receipt(analysis, secret=secret)
+    expired = issue_analysis_receipt(analysis, now=int(time.time()) - 301, secret=secret)
+    tampered = receipt[:-1] + ("A" if receipt[-1] != "A" else "B")
+    payload = {"grad_cam_png_base64": analysis.grad_cam_png_base64}
+    assert client.post("/api/v1/report", json={**payload, "analysis_receipt": tampered}).status_code == 422
+    assert client.post("/api/v1/report", json={**payload, "analysis_receipt": expired}).status_code == 422
+    monkeypatch.setenv("ANALYSIS_RECEIPT_SECRET", "different-receipt-secret-that-is-at-least-thirty-two-bytes")
+    assert client.post("/api/v1/report", json={**payload, "analysis_receipt": receipt}).status_code == 422
+
+    mode_b = analysis.model_copy(update={"mode": "segmentation"})
+    with pytest.raises(Exception):
+        issue_analysis_receipt(mode_b, secret=secret)
+
+
+def test_report_rejects_nested_client_analysis_data_even_with_a_receipt_field():
+    response = client.post("/api/v1/report", json={"analysis_receipt": "v1.aaaaaaaaaaaaaa.bbbbbbbbbbbbb", "analysis": {"nested": {"predicted_class": "glioma"}}})
+    assert response.status_code == 503 or response.status_code == 422
 from io import BytesIO
 
 from pypdf import PdfReader

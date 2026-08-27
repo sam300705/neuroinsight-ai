@@ -32,6 +32,7 @@ class ModelInfo(BaseModel):
 
 
 class AnalysisResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     request_id: str
     scan_id: str
     mode: AnalysisMode
@@ -46,6 +47,7 @@ class AnalysisResponse(BaseModel):
     measurement: Measurement
     grad_cam_url: str | None = None
     grad_cam_png_base64: str | None = Field(default=None, max_length=14_000_000)
+    analysis_receipt: str | None = Field(default=None, max_length=8_192)
     segmentation_mask_url: str | None = None
     warnings: list[str]
     limitations: list[str]
@@ -78,6 +80,7 @@ class ChatResponse(BaseModel):
 
 
 class ReportRequest(BaseModel):
-    analysis: AnalysisResponse
+    model_config = ConfigDict(extra="forbid")
+    analysis_receipt: str = Field(min_length=16, max_length=8_192)
     grad_cam_png_base64: str | None = Field(default=None, max_length=14_000_000)
     segmentation_png_base64: str | None = Field(default=None, max_length=14_000_000)

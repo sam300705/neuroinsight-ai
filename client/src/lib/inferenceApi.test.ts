@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { askResearchExplanation, generateResearchReport, validateWithInferenceService, type InferenceAnalysisResponse } from "./inferenceApi";
 
 const file = new File(["not-a-real-image"], "corrupted.png", { type: "image/png" });
-const realResponse: InferenceAnalysisResponse = { request_id: "request-report", scan_id: "1302e92e-9b7e-43c7-825b-d767b65ea2ee", mode: "classification", status: "complete", model_version: "bdneuro-v7-resnet50-head-only-exp005", processing_time_ms: 314, manual_review_recommended: true, predicted_class: "meningioma", model_confidence_score: 0.8259, calibrated: true, grad_cam_png_base64: "real-derived-overlay", measurement: { kind: "unavailable", metadata_confirmed: false, limitation: "Classification produces no mask or physical measurement." }, warnings: ["Experimental academic result."], limitations: ["Not a medical diagnosis."] };
+const realResponse: InferenceAnalysisResponse = { request_id: "request-report", scan_id: "1302e92e-9b7e-43c7-825b-d767b65ea2ee", mode: "classification", status: "complete", model_version: "bdneuro-v7-resnet50-head-only-exp005", processing_time_ms: 314, manual_review_recommended: true, predicted_class: "meningioma", model_confidence_score: 0.8259, calibrated: true, grad_cam_png_base64: "real-derived-overlay", analysis_receipt: "v1.server-issued-receipt.signature", measurement: { kind: "unavailable", metadata_confirmed: false, limitation: "Classification produces no mask or physical measurement." }, warnings: ["Experimental academic result."], limitations: ["Not a medical diagnosis."] };
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -69,7 +69,8 @@ describe("validateWithInferenceService", () => {
 
     expect(result).toEqual({ ok: true, base64: "JVBERi0xLjc=" });
     expect(fetchMock).toHaveBeenCalledWith("https://inference.example/api/v1/report", expect.objectContaining({ method: "POST", headers: { "Content-Type": "application/json" } }));
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ analysis: realResponse, grad_cam_png_base64: "real-derived-overlay" });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ analysis_receipt: "v1.server-issued-receipt.signature", grad_cam_png_base64: "real-derived-overlay" });
+    expect(JSON.stringify(JSON.parse(fetchMock.mock.calls[0][1].body))).not.toMatch(/predicted_class|confidence|model_version|scan_id|warnings|limitations/i);
   });
 
   it("sends only the explicitly allowlisted de-identified assistant fields from the browser", async () => {

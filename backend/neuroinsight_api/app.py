@@ -13,6 +13,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
+from .analysis_receipts import AnalysisReceiptError, consume_analysis_receipt, issue_analysis_receipt
 from .constants import ACADEMIC_DISCLAIMER, GLIOMA_SCOPE_DISCLAIMER, MAX_MULTIPART_REQUEST_BYTES, MAX_REPORT_REQUEST_BYTES, MAX_UPLOAD_BYTES, MODEL_UNAVAILABLE_MESSAGE
 from .offline_faq import answer_offline
 from .rate_limit import FixedWindowRateLimiter
@@ -147,7 +148,7 @@ def _unavailable_result(request: Request, mode: AnalysisMode, started_at: float)
 
 def _classification_result(request: Request, classifier: ClassifierProtocol, payload: bytes, started_at: float) -> AnalysisResponse:
     prediction = classifier.predict(payload)
-    return AnalysisResponse(
+    analysis = AnalysisResponse(
         request_id=getattr(request.state, "request_id", "unknown"),
         scan_id=str(uuid.uuid4()),
         mode=AnalysisMode.CLASSIFICATION,
@@ -164,6 +165,7 @@ def _classification_result(request: Request, classifier: ClassifierProtocol, pay
         warnings=["Experimental image-level academic result. The model confidence score is not a medical probability.", "Qualified radiologist review is required; this system is not a medical diagnosis."],
         limitations=[ACADEMIC_DISCLAIMER, "The experimental classifier was evaluated only on a fixed image-level public split with no patient identifiers. It is not clinically or externally validated.", "Grad-CAM is coarse classifier attribution, not a tumor boundary."],
     )
+    return analysis.model_copy(update={"analysis_receipt": issue_analysis_receipt(analysis)})
 
 
 async def _read_bounded_upload(request: Request, file: UploadFile) -> bytes:
@@ -277,8 +279,6 @@ async def chat(request: ChatRequest, http_request: Request):
 
 @app.post("/api/v1/report")
 async def report(request: ReportRequest):
-    if request.analysis.mode is not AnalysisMode.CLASSIFICATION:
-        raise HTTPException(status_code=422, detail="Mode B reports remain unavailable until a verified full-volume model is released.")
     if request.segmentation_png_base64:
         raise HTTPException(status_code=422, detail="Segmentation overlays cannot be included while Mode B is unavailable.")
     try:
@@ -286,11 +286,19 @@ async def report(request: ReportRequest):
     except Exception as exc:
         raise HTTPException(status_code=422, detail="Report image payload must be valid base64.") from exc
     try:
-        pdf = build_report(request.analysis, grad_cam)
+        verified_receipt = consume_analysis_receipt(request.analysis_receipt, grad_cam)
+    except AnalysisReceiptError as exc:
+        if exc.category == "signing_unavailable":
+            raise HTTPException(status_code=503, detail="Report integrity signing is not configured; report generation is unavailable.") from exc
+        if exc.category == "replayed":
+            raise HTTPException(status_code=409, detail="This report receipt has already been used; generate a fresh analysis result.") from exc
+        raise HTTPException(status_code=422, detail="The report receipt is invalid, expired, or does not match the server-issued Mode A analysis.") from exc
+    try:
+        pdf = build_report(verified_receipt.analysis, grad_cam)
     except Exception as exc:
         logger.error("report_generation_failed:%s", exc)
         raise HTTPException(status_code=500, detail="The research report could not be generated.") from exc
-    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="neuroinsight-{request.analysis.scan_id}.pdf"'})
+    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="neuroinsight-{verified_receipt.analysis.scan_id}.pdf"'})
 
 
 @app.get("/api/v1/unsupported")
