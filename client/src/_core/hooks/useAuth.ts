@@ -3,6 +3,16 @@ import { trpc } from "@/lib/trpc";
 import { TRPCClientError } from "@trpc/client";
 import { useCallback, useEffect, useMemo } from "react";
 
+const LEGACY_RUNTIME_USER_INFO_KEY = "manus-runtime-user-info";
+
+export function clearLegacyRuntimeUserInfo(storage?: Pick<Storage, "removeItem">) {
+  try {
+    (storage ?? globalThis.localStorage)?.removeItem(LEGACY_RUNTIME_USER_INFO_KEY);
+  } catch {
+    // Privacy cleanup is best-effort when browser storage is blocked.
+  }
+}
+
 type UseAuthOptions = {
   redirectOnUnauthenticated?: boolean;
   redirectPath?: string;
@@ -15,6 +25,8 @@ export function useAuth(options?: UseAuthOptions) {
   // desync it from an in-flight login's `state`.
   const { redirectOnUnauthenticated = false, redirectPath } = options ?? {};
   const utils = trpc.useUtils();
+
+  useEffect(() => clearLegacyRuntimeUserInfo(), []);
 
   const meQuery = trpc.auth.me.useQuery(undefined, {
     retry: false,
@@ -51,10 +63,6 @@ export function useAuth(options?: UseAuthOptions) {
   }, [logoutMutation, utils]);
 
   const state = useMemo(() => {
-    localStorage.setItem(
-      "manus-runtime-user-info",
-      JSON.stringify(meQuery.data)
-    );
     return {
       user: meQuery.data ?? null,
       loading: meQuery.isLoading || logoutMutation.isPending,
