@@ -172,4 +172,7 @@
 - [x] Push Phase 1B and verify exact-head CI/preview without enabling a billed integration or promoting production. (Commit `f4db074` passed Actions `33887677290`; immutable preview `dpl_9TN2qcTD89CdEvGS98KKadmGALnc` is READY with health/readiness 200 and remains honestly in process-local fallback mode because no managed Redis resource was provisioned.)
 - [x] Implement Phase 1C authentication minimisation. (Removed persistent browser user-profile copies and render-time storage writes, purged the legacy key, bounded new sessions to seven days, eliminated per-request `lastSignedIn` database writes for existing sessions, and sanitized auth failure logs; focused tests/typecheck pass.)
 - [x] Run the full local Phase 1C matrix. (64 Vitest tests, selected coverage, TypeScript, production build, and the 476,109-byte initial-bundle gate pass.)
-- [ ] Push Phase 1C and verify exact-head CI/preview.
+- [x] Push Phase 1C and verify exact-head CI/preview. (Commit `d9f6824` passed Actions `33888816644`; matching immutable preview `dpl_5fmbB66NHnhofdu6VNZpBZmVgPQd` is READY.)
+- [x] Implement Phase 1D privacy-safe operational logging and response hardening. (Bounded JSON request events omit content/identity/secrets, unhandled errors become correlated safe JSON, and all inference responses receive no-store/nosniff/no-referrer headers; focused regressions pass.)
+- [x] Run the full local Phase 1D backend matrix. (113 FastAPI/support and 8 ML/data tests pass with all critical coverage thresholds.)
+- [ ] Push Phase 1D and verify exact-head headers/log behavior without configuring a paid drain or production alerts.

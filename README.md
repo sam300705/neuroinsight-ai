@@ -61,6 +61,8 @@ The configured inference service is deliberately checked separately from determi
 
 Serverless production deployments can use managed Upstash Redis for shared rate-limit and single-use report-receipt state. Set server-only Upstash REST credentials and `REQUIRE_DISTRIBUTED_CONTROLS=true` only after provisioning and live verification; required mode fails readiness and protected requests closed when the store is absent or unavailable. Without that setting, the documented bounded process-local fallback is suitable for local/tests but is not a cross-instance guarantee.
 
+The inference service emits privacy-bounded structured route/status/latency events and marks responses non-cacheable. It does not log scan content, filenames, questions, query strings, client addresses, exception messages, or credentials. External alerts, log drains, recipients, and retention require a separate owner-approved operations setup.
+
 Public deployment, data provenance, calibration, privacy, and release boundaries are documented in `docs/PUBLIC_HANDOVER.md`, `DATASET_AUDIT.md`, `EXPERIMENTS.md`, `docs/CALIBRATION_STATUS.md`, `docs/CAPABILITY_MANIFEST.md`, `docs/BRISC_AUDIT.md`, and `docs/OPEN_GATES.md`.
 
 The risk-based review order and exact high-risk file groups are in [`docs/PR_REVIEW_MAP.md`](docs/PR_REVIEW_MAP.md); Python lock, audit, coverage, and SBOM instructions are in [`docs/PYTHON_REPRODUCIBILITY.md`](docs/PYTHON_REPRODUCIBILITY.md). The repository has no root `LICENSE` file. Although the package metadata declares `MIT`, the owner’s intended repository licence has not been independently confirmed, so no licence file was added.

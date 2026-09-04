@@ -4,6 +4,7 @@ import time
 import uuid
 import os
 import logging
+import json
 import re
 from base64 import b64decode
 from contextlib import asynccontextmanager
@@ -31,6 +32,15 @@ public_request_limiter = FixedWindowRateLimiter(window_seconds=60, max_requests=
 assistant_request_limiter = FixedWindowRateLimiter(window_seconds=60, max_requests=10)
 shared_controls = SharedControls.from_env()
 limited_paths = {"/api/v1/analyze", "/api/v1/classify", "/api/v1/segment", "/api/v1/report", "/api/v1/chat"}
+observed_paths = limited_paths | {"/health", "/ready", "/api/v1/model-info", "/api/v1/unsupported"}
+
+
+def _apply_operational_headers(response: Response) -> Response:
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    return response
 
 
 class ClassifierProtocol(Protocol):
@@ -137,6 +147,43 @@ async def public_demo_rate_limit_middleware(request: Request, call_next):
                 headers={"Retry-After": str(retry_after), "x-request-id": request_id},
             )
     return await call_next(request)
+
+
+@app.middleware("http")
+async def operational_response_middleware(request: Request, call_next):
+    """Emit bounded request events and prevent caching of derived research data."""
+    started_at = time.perf_counter()
+    route = request.url.path if request.url.path in observed_paths else "other"
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        logger.error(json.dumps({
+            "level": "error",
+            "event": "request_failed",
+            "route": route,
+            "method": request.method,
+            "status": 500,
+            "duration_ms": int((time.perf_counter() - started_at) * 1000),
+            "request_id": getattr(request.state, "request_id", "unknown"),
+            "error_type": type(exc).__name__,
+        }, separators=(",", ":"), sort_keys=True))
+        request_id = getattr(request.state, "request_id", "unknown")
+        return _apply_operational_headers(JSONResponse(
+            status_code=500,
+            content={"request_id": request_id, "detail": "The inference service encountered an internal error."},
+            headers={"x-request-id": request_id},
+        ))
+    _apply_operational_headers(response)
+    logger.info(json.dumps({
+        "level": "info",
+        "event": "request_completed",
+        "route": route,
+        "method": request.method,
+        "status": response.status_code,
+        "duration_ms": int((time.perf_counter() - started_at) * 1000),
+        "request_id": getattr(request.state, "request_id", response.headers.get("x-request-id", "unknown")),
+    }, separators=(",", ":"), sort_keys=True))
+    return response
 
 
 @app.exception_handler(UploadValidationError)

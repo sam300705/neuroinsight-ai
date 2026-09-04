@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import json
 import time
 from io import BytesIO
 
@@ -52,6 +53,72 @@ def test_health_and_model_info_are_honest_about_model_state():
     assert readiness.status_code == 503
     assert readiness.json()["ready"] is False
     assert all(item["status"] == "unavailable" for item in client.get("/api/v1/model-info").json())
+
+
+def test_operational_responses_are_not_cacheable_and_emit_bounded_structured_events(caplog):
+    caplog.set_level(logging.INFO, logger="neuroinsight_api.app")
+
+    response = client.get("/health", headers={"x-request-id": "observability-test"})
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["pragma"] == "no-cache"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["referrer-policy"] == "no-referrer"
+    events = [json.loads(record.message) for record in caplog.records if record.message.startswith("{")]
+    assert events[-1] == {
+        "duration_ms": events[-1]["duration_ms"],
+        "event": "request_completed",
+        "level": "info",
+        "method": "GET",
+        "request_id": "observability-test",
+        "route": "/health",
+        "status": 200,
+    }
+    assert isinstance(events[-1]["duration_ms"], int)
+
+
+def test_operational_logs_omit_question_client_and_query_content(caplog):
+    caplog.set_level(logging.INFO, logger="neuroinsight_api.app")
+    private_marker = "do-not-log-this-question-or-query"
+
+    response = client.post(
+        f"/api/v1/chat?debug={private_marker}",
+        json={"question": private_marker, "language": "en"},
+        headers={"x-request-id": "privacy-log-test"},
+    )
+
+    assert response.status_code == 200
+    assert private_marker not in caplog.text
+    assert "privacy-log-test" in caplog.text
+
+
+def test_unhandled_request_log_records_error_type_without_exception_message(monkeypatch, caplog):
+    private_marker = "secret-model-or-payload-detail"
+
+    class FailingClassifier:
+        def predict(self, _payload):
+            raise RuntimeError(private_marker)
+
+    monkeypatch.setattr(app.state, "classifier", FailingClassifier(), raising=False)
+    caplog.set_level(logging.ERROR, logger="neuroinsight_api.app")
+    error_client = TestClient(app, raise_server_exceptions=False)
+
+    response = error_client.post(
+        "/api/v1/classify",
+        files={"file": ("scan.png", png_bytes(), "image/png")},
+        headers={"x-request-id": "failure-log-test"},
+    )
+
+    assert response.status_code == 500
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.json() == {"request_id": "failure-log-test", "detail": "The inference service encountered an internal error."}
+    assert private_marker not in caplog.text
+    events = [json.loads(record.message) for record in caplog.records if record.message.startswith("{")]
+    assert events[-1]["event"] == "request_failed"
+    assert events[-1]["error_type"] == "RuntimeError"
+    assert events[-1]["request_id"] == "failure-log-test"
 
 
 def test_required_distributed_controls_fail_readiness_and_post_requests_closed(monkeypatch):
