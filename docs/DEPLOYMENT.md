@@ -15,6 +15,8 @@ The browser calls the independent validation service only when `VITE_INFERENCE_A
 
 > Do not expose raw scans to a third party without a documented data-processing, privacy, and security review. The current service is an academic prototype, not a medical diagnostic deployment.
 
+The dashboard process validates `PORT` as an integer from 1 through 65535. In production it binds only that assigned port and exits non-zero with a bounded error-type event if configuration or the initial listen fails; it does not move to an unadvertised port that the hosting router cannot reach. The bounded alternative-port search is development-only.
+
 ## Local FastAPI validation service
 
 For local development without containers, install the service package from `backend/` and run its tests through the installed package:
