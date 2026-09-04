@@ -107,7 +107,7 @@ def _validate_image(payload: bytes, filename: str, declared_type: str) -> Valida
                 _validate_mri_plausibility(image)
     except UploadValidationError:
         raise
-    except (UnidentifiedImageError, OSError, Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
+    except (UnidentifiedImageError, OSError, SyntaxError, Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
         raise UploadValidationError("The uploaded image is corrupted or not a supported image file.") from exc
     if actual not in {"PNG", "JPEG"}:
         raise UploadValidationError("File content does not match a PNG or JPEG image.")

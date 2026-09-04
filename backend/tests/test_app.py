@@ -161,6 +161,20 @@ def test_classify_rejects_wrong_extension_and_corrupted_image():
     assert corrupt.status_code == 422
 
 
+def test_classify_maps_bad_png_checksum_to_a_safe_validation_error():
+    bad_checksum_png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZcYQAAAAASUVORK5CYII="
+    )
+
+    response = client.post(
+        "/api/v1/classify",
+        files={"file": ("bad-checksum.png", bad_checksum_png, "image/png")},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "The uploaded image is corrupted or not a supported image file."
+
+
 def test_classify_rejects_obviously_non_mri_images_before_inference(monkeypatch):
     calls = 0
 

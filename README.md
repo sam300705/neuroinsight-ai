@@ -34,7 +34,7 @@ flowchart LR
   A -. Mode B .-> X[Unavailable fail-closed]
 ```
 
-For a lawful demonstration, use only a locally held, authorised PNG/JPEG outside any locked evaluation split; acknowledge the data-use notice, submit it to **Mode A**, and interpret the output only as experimental image-level research context. Do not upload personal, restricted, DICOM, NIfTI, or test-split data. A derived report is intentionally unavailable unless an owner configures the report-signing boundary; no client-provided result object is accepted. The persistent visible limitation is that `0.8099` accuracy is an audited **image-level** EXP-005 fixed-split result, not patient-level, clinical, or diagnostic accuracy.
+For a lawful demonstration, use only a locally held, authorised PNG/JPEG outside any locked evaluation split; acknowledge the data-use notice, submit it to **Mode A**, and interpret the output only as experimental image-level research context. Do not upload personal, restricted, DICOM, NIfTI, or test-split data. Current analysis state—including filename, derived Grad-CAM, and report receipt—is memory-only and is not written to browser local/session storage. A derived report is intentionally unavailable unless an owner configures the report-signing boundary; no client-provided result object is accepted. The persistent visible limitation is that `0.8099` accuracy is an audited **image-level** EXP-005 fixed-split result, not patient-level, clinical, or diagnostic accuracy.
 
 ## What is unavailable
 

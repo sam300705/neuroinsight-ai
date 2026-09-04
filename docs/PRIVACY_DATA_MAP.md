@@ -5,6 +5,7 @@ This is an engineering data inventory, not legal advice or a privacy-compliance 
 | Data category | Purpose | Storage/retention | Deletion mechanism and boundary |
 |---|---|---|---|
 | Browser-selected Mode A image | Validation and experimental inference | Sent to the external inference service for processing; not retained by the dashboard by default | The dashboard does not write raw uploads to its database or managed storage. |
+| Current browser analysis state | Render the current result, derived Grad-CAM, filename, and report receipt | Memory-only for the active page session; not written to local or session storage | Refresh/navigation clears the state. Startup removes the legacy `neuroinsight-current-analysis` local-storage record left by older builds, and replaced blob previews are revoked. |
 | Account identity | Authenticate private history | Platform-managed user table/session | Account controls are platform-managed. |
 | Scan record | Reopen a derived research result and list history | Account-linked metadata in the application database | Per-record and delete-all operations remove ownership-scoped metadata. |
 | Derived report and Grad-CAM | Optional research-history retrieval | Managed object storage only after consented save | Phase 0 uses deterministic keys and requests provider deletion before metadata deletion. A failed storage delete preserves metadata for retry; exact-head provider integration is still required before promising physical erasure publicly. |
