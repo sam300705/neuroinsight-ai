@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Protocol, TypeVar
+from collections.abc import Callable
+from typing import ParamSpec, Protocol, TypeVar
 
 
 PredictionT = TypeVar("PredictionT")
+OperationT = TypeVar("OperationT")
+OperationParams = ParamSpec("OperationParams")
 
 
 class Predictor(Protocol[PredictionT]):
@@ -26,15 +29,23 @@ class InferenceConcurrencyLimiter:
         self._semaphore = asyncio.Semaphore(max_concurrent)
         self.acquire_timeout_seconds = acquire_timeout_seconds
 
-    async def predict(self, classifier: Predictor[PredictionT], payload: bytes) -> PredictionT:
+    async def run(
+        self,
+        operation: Callable[OperationParams, OperationT],
+        *args: OperationParams.args,
+        **kwargs: OperationParams.kwargs,
+    ) -> OperationT:
         try:
             await asyncio.wait_for(self._semaphore.acquire(), timeout=self.acquire_timeout_seconds)
         except TimeoutError as exc:
             raise InferenceBusyError("inference capacity is busy") from exc
         try:
-            return await asyncio.to_thread(classifier.predict, payload)
+            return await asyncio.to_thread(operation, *args, **kwargs)
         finally:
             self._semaphore.release()
+
+    async def predict(self, classifier: Predictor[PredictionT], payload: bytes) -> PredictionT:
+        return await self.run(classifier.predict, payload)
 
 
 inference_concurrency_limiter = InferenceConcurrencyLimiter()

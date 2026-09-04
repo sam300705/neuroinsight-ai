@@ -126,7 +126,7 @@ def test_unhandled_request_log_records_error_type_without_exception_message(monk
 
 def test_busy_inference_returns_retryable_correlated_503(monkeypatch):
     class BusyLimiter:
-        async def predict(self, _classifier, _payload):
+        async def run(self, *_args, **_kwargs):
             raise InferenceBusyError("private queue detail")
 
     monkeypatch.setattr(app.state, "classifier", object(), raising=False)
@@ -335,6 +335,46 @@ def test_classify_rejects_obviously_non_mri_images_before_inference(monkeypatch)
     assert "grayscale brain MRI" in response.json()["detail"]
     assert calls == 0
     monkeypatch.setattr(app.state, "classifier", None)
+
+
+def test_classification_validation_and_prediction_share_one_worker_admission(monkeypatch):
+    events = []
+
+    class RecordingLimiter:
+        async def run(self, operation, *args, **kwargs):
+            events.append("admitted")
+            return operation(*args, **kwargs)
+
+    class Prediction:
+        status = "complete"
+        predicted_class = "glioma"
+        confidence = 0.7
+        calibrated = True
+        uncertainty_reason = None
+        grad_cam_png_base64 = base64.b64encode(png_bytes()).decode("ascii")
+
+    class RecordingClassifier:
+        def predict(self, _payload):
+            events.append("predicted")
+            return Prediction()
+
+    original_validate = app_module.validate_upload
+
+    def recording_validate(*args, **kwargs):
+        events.append("validated")
+        return original_validate(*args, **kwargs)
+
+    monkeypatch.setattr(app_module, "inference_concurrency_limiter", RecordingLimiter())
+    monkeypatch.setattr(app_module, "validate_upload", recording_validate)
+    monkeypatch.setattr(app.state, "classifier", RecordingClassifier(), raising=False)
+
+    response = client.post(
+        "/api/v1/classify",
+        files={"file": ("scan.png", png_bytes(), "image/png")},
+    )
+
+    assert response.status_code == 200
+    assert events == ["admitted", "validated", "predicted"]
 
 
 def test_classify_rejects_blank_and_full_frame_grayscale_images():

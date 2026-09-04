@@ -44,3 +44,11 @@ def test_inference_limiter_validates_configuration():
         InferenceConcurrencyLimiter(max_concurrent=0)
     with pytest.raises(ValueError):
         InferenceConcurrencyLimiter(acquire_timeout_seconds=0)
+
+
+def test_generic_inference_operation_runs_with_arguments_and_keywords():
+    async def exercise():
+        limiter = InferenceConcurrencyLimiter()
+        return await limiter.run(lambda left, *, right: left + right, 20, right=22)
+
+    assert asyncio.run(exercise()) == 42

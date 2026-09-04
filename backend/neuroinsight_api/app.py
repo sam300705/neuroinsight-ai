@@ -233,8 +233,31 @@ def _unavailable_result(request: Request, mode: AnalysisMode, started_at: float)
     )
 
 
-async def _classification_result(request: Request, classifier: ClassifierProtocol, payload: bytes, started_at: float) -> AnalysisResponse:
-    prediction = await inference_concurrency_limiter.predict(classifier, payload)
+def _validate_and_predict(
+    classifier: ClassifierProtocol,
+    payload: bytes,
+    filename: str,
+    content_type: str | None,
+):
+    validate_upload(payload, filename, content_type, AnalysisMode.CLASSIFICATION)
+    return classifier.predict(payload)
+
+
+async def _classification_result(
+    request: Request,
+    classifier: ClassifierProtocol,
+    payload: bytes,
+    filename: str,
+    content_type: str | None,
+    started_at: float,
+) -> AnalysisResponse:
+    prediction = await inference_concurrency_limiter.run(
+        _validate_and_predict,
+        classifier,
+        payload,
+        filename,
+        content_type,
+    )
     analysis = AnalysisResponse(
         request_id=getattr(request.state, "request_id", "unknown"),
         scan_id=str(uuid.uuid4()),
@@ -325,20 +348,30 @@ async def analyze(
     if mode is AnalysisMode.SEGMENTATION:
         await file.close()
         return _unavailable_result(request, mode, started_at)
+    filename = file.filename or "upload"
+    content_type = file.content_type
     payload = await _read_bounded_upload(request, file)
-    validate_upload(payload, file.filename or "upload", file.content_type, mode)
     if mode is AnalysisMode.CLASSIFICATION and (classifier := getattr(app.state, "classifier", None)):
-        return await _classification_result(request, classifier, payload, started_at)
+        return await _classification_result(request, classifier, payload, filename, content_type, started_at)
+    await inference_concurrency_limiter.run(validate_upload, payload, filename, content_type, mode)
     return _unavailable_result(request, mode, started_at)
 
 
 @app.post("/api/v1/classify", response_model=AnalysisResponse)
 async def classify(request: Request, file: UploadFile = File(...)):
     started_at = time.perf_counter()
+    filename = file.filename or "upload"
+    content_type = file.content_type
     payload = await _read_bounded_upload(request, file)
-    validate_upload(payload, file.filename or "upload", file.content_type, AnalysisMode.CLASSIFICATION)
     if classifier := getattr(app.state, "classifier", None):
-        return await _classification_result(request, classifier, payload, started_at)
+        return await _classification_result(request, classifier, payload, filename, content_type, started_at)
+    await inference_concurrency_limiter.run(
+        validate_upload,
+        payload,
+        filename,
+        content_type,
+        AnalysisMode.CLASSIFICATION,
+    )
     return _unavailable_result(request, AnalysisMode.CLASSIFICATION, started_at)
 
 
