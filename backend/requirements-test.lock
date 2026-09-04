@@ -67,7 +67,9 @@ httpcore==1.0.9
 httptools==0.8.0
     # via uvicorn
 httpx==0.28.1
-    # via neuroinsight-ai-api
+    # via
+    #   neuroinsight-ai-api
+    #   upstash-redis
 idna==3.19
     # via
     #   anyio
@@ -216,6 +218,8 @@ typing-inspection==0.4.4
     #   pydantic
 tzdata==2026.3
     # via arrow
+upstash-redis==1.8.0
+    # via neuroinsight-ai-api
 uri-template==1.3.0
     # via jsonschema
 urllib3==2.7.0

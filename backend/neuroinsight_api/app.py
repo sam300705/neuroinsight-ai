@@ -13,10 +13,12 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
-from .analysis_receipts import AnalysisReceiptError, consume_analysis_receipt, issue_analysis_receipt
+from . import analysis_receipts as receipt_module
+from .analysis_receipts import AnalysisReceiptError, issue_analysis_receipt, verify_analysis_receipt
 from .constants import ACADEMIC_DISCLAIMER, GLIOMA_SCOPE_DISCLAIMER, MAX_MULTIPART_REQUEST_BYTES, MAX_REPORT_REQUEST_BYTES, MAX_UPLOAD_BYTES, MODEL_UNAVAILABLE_MESSAGE
 from .offline_faq import answer_offline
 from .rate_limit import FixedWindowRateLimiter
+from .distributed_controls import SharedControls, SharedControlUnavailable, SharedReplayDetected
 from .research_assistant import answer_research_question
 from .schemas import AnalysisMode, AnalysisResponse, ChatRequest, ChatResponse, Measurement, ModelInfo, ReportRequest
 from .reporting import build_report
@@ -27,6 +29,7 @@ logger = logging.getLogger(__name__)
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 public_request_limiter = FixedWindowRateLimiter(window_seconds=60, max_requests=20)
 assistant_request_limiter = FixedWindowRateLimiter(window_seconds=60, max_requests=10)
+shared_controls = SharedControls.from_env()
 limited_paths = {"/api/v1/analyze", "/api/v1/classify", "/api/v1/segment", "/api/v1/report", "/api/v1/chat"}
 
 
@@ -110,7 +113,21 @@ async def public_demo_rate_limit_middleware(request: Request, call_next):
     if request.method == "POST" and request.url.path in limited_paths:
         client_host = request.client.host if request.client else "unknown"
         limiter = assistant_request_limiter if request.url.path == "/api/v1/chat" else public_request_limiter
-        allowed, retry_after = limiter.allow(f"{request.url.path}:{client_host}")
+        try:
+            allowed, retry_after = await shared_controls.allow(
+                scope="assistant" if request.url.path == "/api/v1/chat" else "public",
+                identity=f"{request.url.path}:{client_host}",
+                window_seconds=limiter.window_seconds,
+                max_requests=limiter.max_requests,
+                local_fallback=lambda: limiter.allow(f"{request.url.path}:{client_host}"),
+            )
+        except SharedControlUnavailable:
+            request_id = getattr(request.state, "request_id", str(uuid.uuid4()))
+            return JSONResponse(
+                status_code=503,
+                content={"request_id": request_id, "detail": "Shared abuse controls are unavailable; please retry later."},
+                headers={"Retry-After": "5", "x-request-id": request_id},
+            )
         if not allowed:
             request_id = getattr(request.state, "request_id", str(uuid.uuid4()))
             request.state.request_id = request_id
@@ -194,8 +211,15 @@ async def health():
 @app.get("/ready")
 async def ready():
     classifier = getattr(app.state, "classifier", None)
-    payload = {"ready": bool(classifier), "reason": "Experimental classifier configured; academic non-clinical scope only." if classifier else MODEL_UNAVAILABLE_MESSAGE}
-    return payload if classifier else JSONResponse(status_code=503, content=payload)
+    ready_now = bool(classifier) and shared_controls.ready
+    if not classifier:
+        reason = MODEL_UNAVAILABLE_MESSAGE
+    elif not shared_controls.ready:
+        reason = "Required shared abuse and replay controls are not configured."
+    else:
+        reason = "Experimental classifier configured; academic non-clinical scope only."
+    payload = {"ready": ready_now, "reason": reason}
+    return payload if ready_now else JSONResponse(status_code=503, content=payload)
 
 
 @app.get("/api/v1/model-info", response_model=list[ModelInfo])
@@ -287,12 +311,28 @@ async def report(request: ReportRequest):
     except Exception as exc:
         raise HTTPException(status_code=422, detail="Report image payload must be valid base64.") from exc
     try:
-        verified_receipt = consume_analysis_receipt(request.analysis_receipt, grad_cam)
+        current_time = int(time.time())
+        verified_receipt = verify_analysis_receipt(request.analysis_receipt, grad_cam, now=current_time)
+        try:
+            await shared_controls.consume_receipt_once(
+                receipt_id=verified_receipt.receipt_id,
+                expires_at=verified_receipt.expires_at,
+                now=current_time,
+                local_fallback=lambda: receipt_module.receipt_replay_guard.consume_once(
+                    verified_receipt.receipt_id, verified_receipt.expires_at, current_time
+                ),
+            )
+        except SharedReplayDetected as exc:
+            raise AnalysisReceiptError("replayed") from exc
+        except SharedControlUnavailable as exc:
+            raise AnalysisReceiptError("replay_guard_unavailable") from exc
     except AnalysisReceiptError as exc:
         if exc.category == "signing_unavailable":
             raise HTTPException(status_code=503, detail="Report integrity signing is not configured; report generation is unavailable.") from exc
         if exc.category == "replayed":
             raise HTTPException(status_code=409, detail="This report receipt has already been used; generate a fresh analysis result.") from exc
+        if exc.category == "replay_guard_unavailable":
+            raise HTTPException(status_code=503, detail="Shared report replay protection is unavailable; report generation is temporarily disabled.") from exc
         raise HTTPException(status_code=422, detail="The report receipt is invalid, expired, or does not match the server-issued Mode A analysis.") from exc
     try:
         pdf = build_report(verified_receipt.analysis, grad_cam)

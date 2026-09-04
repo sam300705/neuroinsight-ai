@@ -123,8 +123,8 @@ def issue_analysis_receipt(analysis: AnalysisResponse, *, now: int | None = None
     return f"{RECEIPT_VERSION}.{encoded_claims}.{signature}"
 
 
-def consume_analysis_receipt(receipt: str, grad_cam: bytes | None, *, now: int | None = None, secret: bytes | None = None, replay_guard: ReceiptReplayGuard | None = None) -> VerifiedAnalysisReceipt:
-    """Verify a report receipt, its immutable analysis claims, image hash, expiry, and local single use."""
+def verify_analysis_receipt(receipt: str, grad_cam: bytes | None, *, now: int | None = None, secret: bytes | None = None) -> VerifiedAnalysisReceipt:
+    """Verify immutable claims and return the receipt identity without consuming it."""
     signing_secret = secret if secret is not None else _configured_secret()
     if signing_secret is None or len(signing_secret) < MIN_RECEIPT_SECRET_BYTES:
         raise AnalysisReceiptError("signing_unavailable")
@@ -152,5 +152,12 @@ def consume_analysis_receipt(receipt: str, grad_cam: bytes | None, *, now: int |
         raise
     except (KeyError, TypeError, ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise AnalysisReceiptError("invalid") from exc
-    (replay_guard or receipt_replay_guard).consume_once(receipt_id, expires_at, current_time)
     return VerifiedAnalysisReceipt(analysis=analysis, grad_cam_sha256=expected_grad_cam_hash, expires_at=expires_at, receipt_id=receipt_id)
+
+
+def consume_analysis_receipt(receipt: str, grad_cam: bytes | None, *, now: int | None = None, secret: bytes | None = None, replay_guard: ReceiptReplayGuard | None = None) -> VerifiedAnalysisReceipt:
+    """Verify a report receipt and consume it with the process-local guard."""
+    verified = verify_analysis_receipt(receipt, grad_cam, now=now, secret=secret)
+    current_time = int(time.time()) if now is None else now
+    (replay_guard or receipt_replay_guard).consume_once(verified.receipt_id, verified.expires_at, current_time)
+    return verified

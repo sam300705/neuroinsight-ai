@@ -54,6 +54,22 @@ def test_health_and_model_info_are_honest_about_model_state():
     assert all(item["status"] == "unavailable" for item in client.get("/api/v1/model-info").json())
 
 
+def test_required_distributed_controls_fail_readiness_and_post_requests_closed(monkeypatch):
+    from neuroinsight_api.distributed_controls import SharedControls
+
+    monkeypatch.setattr(app_module, "shared_controls", SharedControls(None, required=True))
+    monkeypatch.setattr(app.state, "classifier", object(), raising=False)
+
+    readiness = client.get("/ready")
+    request = client.post("/api/v1/chat", json={"question": "Explain confidence", "language": "en"})
+
+    assert readiness.status_code == 503
+    assert readiness.json() == {"ready": False, "reason": "Required shared abuse and replay controls are not configured."}
+    assert request.status_code == 503
+    assert request.headers["retry-after"] == "5"
+    assert "Shared abuse controls are unavailable" in request.json()["detail"]
+
+
 def test_onnx_bootstrap_failure_keeps_the_api_available_and_mode_a_unavailable(monkeypatch):
     import neuroinsight_api.onnx_classifier_runtime as onnx_runtime
 

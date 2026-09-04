@@ -14,7 +14,8 @@ dependencies = [
   "nibabel>=5.2,<6.0",
   "reportlab>=4.2,<5.0",
   "fpdf2>=2.8,<3.0",
-  "pypdf>=6.15,<7.0"
+  "pypdf>=6.15,<7.0",
+  "upstash-redis>=1.8,<2.0"
 ]
 
 [build-system]
