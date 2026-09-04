@@ -20,6 +20,7 @@ from .constants import ACADEMIC_DISCLAIMER, GLIOMA_SCOPE_DISCLAIMER, MAX_MULTIPA
 from .offline_faq import answer_offline
 from .rate_limit import FixedWindowRateLimiter
 from .distributed_controls import SharedControls, SharedControlUnavailable, SharedReplayDetected
+from .inference_execution import InferenceBusyError, inference_concurrency_limiter
 from .research_assistant import answer_research_question
 from .schemas import AnalysisMode, AnalysisResponse, ChatRequest, ChatResponse, Measurement, ModelInfo, ReportRequest
 from .reporting import build_report
@@ -191,6 +192,16 @@ async def validation_error_handler(request: Request, exc: UploadValidationError)
     return JSONResponse(status_code=422, content={"request_id": getattr(request.state, "request_id", None), "detail": str(exc)})
 
 
+@app.exception_handler(InferenceBusyError)
+async def inference_busy_handler(request: Request, _: InferenceBusyError):
+    request_id = getattr(request.state, "request_id", "unknown")
+    return JSONResponse(
+        status_code=503,
+        content={"request_id": request_id, "detail": "Inference capacity is busy; please retry shortly."},
+        headers={"Retry-After": "2", "x-request-id": request_id},
+    )
+
+
 def _unavailable_result(request: Request, mode: AnalysisMode, started_at: float) -> AnalysisResponse:
     return AnalysisResponse(
         request_id=getattr(request.state, "request_id", "unknown"),
@@ -210,8 +221,8 @@ def _unavailable_result(request: Request, mode: AnalysisMode, started_at: float)
     )
 
 
-def _classification_result(request: Request, classifier: ClassifierProtocol, payload: bytes, started_at: float) -> AnalysisResponse:
-    prediction = classifier.predict(payload)
+async def _classification_result(request: Request, classifier: ClassifierProtocol, payload: bytes, started_at: float) -> AnalysisResponse:
+    prediction = await inference_concurrency_limiter.predict(classifier, payload)
     analysis = AnalysisResponse(
         request_id=getattr(request.state, "request_id", "unknown"),
         scan_id=str(uuid.uuid4()),
@@ -305,7 +316,7 @@ async def analyze(
     payload = await _read_bounded_upload(request, file)
     validate_upload(payload, file.filename or "upload", file.content_type, mode)
     if mode is AnalysisMode.CLASSIFICATION and (classifier := getattr(app.state, "classifier", None)):
-        return _classification_result(request, classifier, payload, started_at)
+        return await _classification_result(request, classifier, payload, started_at)
     return _unavailable_result(request, mode, started_at)
 
 
@@ -315,7 +326,7 @@ async def classify(request: Request, file: UploadFile = File(...)):
     payload = await _read_bounded_upload(request, file)
     validate_upload(payload, file.filename or "upload", file.content_type, AnalysisMode.CLASSIFICATION)
     if classifier := getattr(app.state, "classifier", None):
-        return _classification_result(request, classifier, payload, started_at)
+        return await _classification_result(request, classifier, payload, started_at)
     return _unavailable_result(request, AnalysisMode.CLASSIFICATION, started_at)
 
 

@@ -1,14 +1,16 @@
 import base64
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 from io import BytesIO
 import json
+import threading
 
 import numpy as np
 import pytest
 from PIL import Image
 
 from neuroinsight_api.model_contract import IMAGE_SIZE, MODEL_LABELS, NORMALIZATION_MEAN, NORMALIZATION_STD, PUBLIC_LABELS, validate_calibration, validate_metadata
-from neuroinsight_api.onnx_classifier_runtime import ClassifierInitializationError, OnnxExperimentalClassifier, _download_verified_https, configured_onnx_classifier
+from neuroinsight_api.onnx_classifier_runtime import ClassifierInitializationError, OnnxExperimentalClassifier, _download_verified_https, _is_verified_cached_artifact, configured_onnx_classifier
 
 
 def test_exp005_label_and_preprocessing_contract_is_fixed():
@@ -123,7 +125,7 @@ def test_download_rejects_oversize_truncated_and_unsafe_redirects_and_removes_pa
     with pytest.raises(ClassifierInitializationError):
         _download_verified_https("https://allowed.example/model.onnx", destination, expected, max_bytes=5)
     assert not destination.exists()
-    assert not (tmp_path / "model.onnx.partial").exists()
+    assert not list(tmp_path.glob(".model.onnx.*.partial"))
 
 
 def test_download_accepts_valid_cached_artifact_without_network(tmp_path, monkeypatch):
@@ -132,6 +134,68 @@ def test_download_accepts_valid_cached_artifact_without_network(tmp_path, monkey
     expected = hashlib.sha256(b"cached").hexdigest()
     monkeypatch.setattr("neuroinsight_api.onnx_classifier_runtime.urlopen", lambda *_args, **_kwargs: pytest.fail("valid cache must not download"))
     assert _download_verified_https("https://allowed.example/model.onnx", destination, expected) == destination
+
+
+def test_cache_read_failure_is_treated_as_a_miss(tmp_path, monkeypatch):
+    destination = tmp_path / "model.onnx"
+    destination.write_bytes(b"cached")
+    monkeypatch.setattr(
+        "neuroinsight_api.onnx_classifier_runtime._sha256_file",
+        lambda _path: (_ for _ in ()).throw(OSError("transient cache read failure")),
+    )
+
+    assert not _is_verified_cached_artifact(destination, hashlib.sha256(b"cached").hexdigest(), 1024)
+
+
+def test_download_rejects_oversized_cached_artifact_before_hashing(tmp_path, monkeypatch):
+    destination = tmp_path / "model.onnx"
+    destination.write_bytes(b"too-large")
+    expected = hashlib.sha256(b"too-large").hexdigest()
+    monkeypatch.setattr(
+        "neuroinsight_api.onnx_classifier_runtime.urlopen",
+        lambda *_args, **_kwargs: DownloadResponse(b"replacement"),
+    )
+
+    with pytest.raises(ClassifierInitializationError, match="download_too_large"):
+        _download_verified_https("https://allowed.example/model.onnx", destination, expected, max_bytes=4)
+    assert destination.read_bytes() == b"too-large"
+    assert not list(tmp_path.glob(".model.onnx.*.partial"))
+
+
+def test_concurrent_verified_downloads_publish_atomically_without_partial_files(tmp_path, monkeypatch):
+    payload = b"same-verified-artifact"
+    expected = hashlib.sha256(payload).hexdigest()
+    barrier = threading.Barrier(2)
+
+    class ConcurrentResponse(DownloadResponse):
+        first_read = True
+
+        def read(self, size=-1):
+            if self.first_read:
+                self.first_read = False
+                barrier.wait(timeout=1)
+            return super().read(size)
+
+    monkeypatch.setattr(
+        "neuroinsight_api.onnx_classifier_runtime.urlopen",
+        lambda *_args, **_kwargs: ConcurrentResponse(payload),
+    )
+    destination = tmp_path / "model.onnx"
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(
+            lambda _: _download_verified_https(
+                "https://allowed.example/model.onnx",
+                destination,
+                expected,
+                max_bytes=1024,
+            ),
+            range(2),
+        ))
+
+    assert results == [destination, destination]
+    assert destination.read_bytes() == payload
+    assert not list(tmp_path.glob(".model.onnx.*.partial"))
 
 
 def test_onnx_initialization_checks_input_output_names_and_fixed_160px_shapes(tmp_path, monkeypatch):

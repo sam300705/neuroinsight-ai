@@ -27,6 +27,8 @@ The managed application receives its database, authentication, object-storage, a
 
 The service has **no configured `INFERENCE_SERVICE_TOKEN`**. It relies on exact CORS allowlisting and accepts only intended public academic-demo traffic; do not document a token that the runtime does not verify. `MAX_UPLOAD_BYTES` is a source-controlled 50 MB FastAPI limit, not an environment variable. The service also rejects a multipart request over 51 MB, reads no more than 50 MB of file content, rejects images above 4 megapixels, and applies a conservative grayscale/intensity/background plausibility screen before inference. That heuristic blocks obvious incompatible inputs but is not a trained MRI/OOD detector. Derived Grad-CAM output is bounded to a 512-pixel longest edge. `/ready` returns HTTP `503` when the classifier is unavailable.
 
+Mode A prediction is a blocking CPU operation, so the service moves it to a worker thread and permits one active inference per process. A request that cannot acquire that slot within one second receives a correlated HTTP `503` with `Retry-After: 2`; callers may retry deliberately, but the browser does not automatically replay analysis POSTs. This is a process-local memory/availability boundary, not a distributed queue or capacity guarantee.
+
 The dashboard remains usable without the inference settings, presenting explicit model-unavailable states and the offline FAQ fallback. Supplying runtime variables does not promote a new model, enable segmentation, store raw MRI uploads, or remove the permanent non-diagnostic boundary.
 
 ## Optional Research Explanation Assistant

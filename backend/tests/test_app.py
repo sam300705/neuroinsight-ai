@@ -15,6 +15,7 @@ from PIL import Image
 from neuroinsight_api.app import app
 import neuroinsight_api.app as app_module
 from neuroinsight_api.analysis_receipts import ReceiptReplayGuard, issue_analysis_receipt
+from neuroinsight_api.inference_execution import InferenceBusyError
 from neuroinsight_api.rate_limit import FixedWindowRateLimiter
 from neuroinsight_api.schemas import AnalysisMode
 from neuroinsight_api.upload_validation import UploadValidationError, validate_upload
@@ -119,6 +120,30 @@ def test_unhandled_request_log_records_error_type_without_exception_message(monk
     assert events[-1]["event"] == "request_failed"
     assert events[-1]["error_type"] == "RuntimeError"
     assert events[-1]["request_id"] == "failure-log-test"
+
+
+def test_busy_inference_returns_retryable_correlated_503(monkeypatch):
+    class BusyLimiter:
+        async def predict(self, _classifier, _payload):
+            raise InferenceBusyError("private queue detail")
+
+    monkeypatch.setattr(app.state, "classifier", object(), raising=False)
+    monkeypatch.setattr(app_module, "inference_concurrency_limiter", BusyLimiter())
+
+    response = client.post(
+        "/api/v1/classify",
+        files={"file": ("scan.png", png_bytes(), "image/png")},
+        headers={"x-request-id": "busy-inference-test"},
+    )
+
+    assert response.status_code == 503
+    assert response.headers["retry-after"] == "2"
+    assert response.headers["x-request-id"] == "busy-inference-test"
+    assert response.json() == {
+        "request_id": "busy-inference-test",
+        "detail": "Inference capacity is busy; please retry shortly.",
+    }
+    assert "private queue detail" not in response.text
 
 
 def test_required_distributed_controls_fail_readiness_and_post_requests_closed(monkeypatch):

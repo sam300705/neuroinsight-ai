@@ -7,6 +7,7 @@ import hashlib
 import io
 import json
 import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
@@ -69,6 +70,15 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _is_verified_cached_artifact(path: Path, expected_sha256: str, max_bytes: int) -> bool:
+    try:
+        return path.is_file() and path.stat().st_size <= max_bytes and _sha256_file(path) == expected_sha256
+    except OSError:
+        # A concurrent cache cleanup or failed filesystem read is a cache miss;
+        # the verified download path remains authoritative.
+        return False
+
+
 def _content_length(response: object) -> int | None:
     headers = getattr(response, "headers", None)
     value = headers.get("Content-Length") if headers and hasattr(headers, "get") else None
@@ -88,35 +98,55 @@ def _download_verified_https(url: str, destination: Path, expected_sha256: str, 
     _validate_sha256(expected_sha256)
     if max_bytes <= 0:
         raise ClassifierInitializationError("artifact_invalid")
-    if destination.is_file() and _sha256_file(destination) == expected_sha256:
+    if _is_verified_cached_artifact(destination, expected_sha256, max_bytes):
         return destination
     destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = destination.with_suffix(destination.suffix + ".partial")
+    temporary: Path | None = None
     digest = hashlib.sha256()
     downloaded = 0
     try:
-        with urlopen(url, timeout=90) as response, temporary.open("wb") as stream:
+        with urlopen(url, timeout=90) as response:
             _validate_artifact_url(getattr(response, "url", url))
             declared_length = _content_length(response)
             if declared_length is not None and declared_length > max_bytes:
                 raise ClassifierInitializationError("download_too_large")
-            while chunk := response.read(1024 * 1024):
-                downloaded += len(chunk)
-                if downloaded > max_bytes:
-                    raise ClassifierInitializationError("download_too_large")
-                digest.update(chunk)
-                stream.write(chunk)
-            if declared_length is not None and downloaded != declared_length:
-                raise ClassifierInitializationError("download_failed")
+            with tempfile.NamedTemporaryFile(
+                mode="wb",
+                dir=destination.parent,
+                prefix=f".{destination.name}.",
+                suffix=".partial",
+                delete=False,
+            ) as stream:
+                temporary = Path(stream.name)
+                while chunk := response.read(1024 * 1024):
+                    downloaded += len(chunk)
+                    if downloaded > max_bytes:
+                        raise ClassifierInitializationError("download_too_large")
+                    digest.update(chunk)
+                    stream.write(chunk)
+                if declared_length is not None and downloaded != declared_length:
+                    raise ClassifierInitializationError("download_failed")
+                stream.flush()
+                os.fsync(stream.fileno())
     except ClassifierInitializationError:
-        temporary.unlink(missing_ok=True)
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
         raise
     except Exception as exc:
-        temporary.unlink(missing_ok=True)
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
         raise ClassifierInitializationError("download_failed") from exc
     if digest.hexdigest() != expected_sha256:
-        temporary.unlink(missing_ok=True)
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
         raise ClassifierInitializationError("checksum_mismatch")
+    if temporary is None:
+        raise ClassifierInitializationError("download_failed")
+    # Another cold-start worker may have completed the same verified artifact
+    # while this request was downloading. Keep its valid file and discard ours.
+    if _is_verified_cached_artifact(destination, expected_sha256, max_bytes):
+        temporary.unlink(missing_ok=True)
+        return destination
     temporary.replace(destination)
     return destination
 
