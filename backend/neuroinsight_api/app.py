@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 import uuid
 import os
@@ -22,6 +23,7 @@ from .rate_limit import FixedWindowRateLimiter
 from .distributed_controls import SharedControls, SharedControlUnavailable, SharedReplayDetected
 from .inference_execution import InferenceBusyError, inference_concurrency_limiter
 from .research_assistant import answer_research_question
+from .report_execution import ReportBusyError, report_concurrency_limiter
 from .schemas import AnalysisMode, AnalysisResponse, ChatRequest, ChatResponse, Measurement, ModelInfo, ReportRequest
 from .reporting import build_report
 from .upload_validation import UploadValidationError, validate_upload
@@ -202,6 +204,16 @@ async def inference_busy_handler(request: Request, _: InferenceBusyError):
     )
 
 
+@app.exception_handler(ReportBusyError)
+async def report_busy_handler(request: Request, _: ReportBusyError):
+    request_id = getattr(request.state, "request_id", "unknown")
+    return JSONResponse(
+        status_code=503,
+        content={"request_id": request_id, "detail": "Report capacity is busy; please retry shortly."},
+        headers={"Retry-After": "2", "x-request-id": request_id},
+    )
+
+
 def _unavailable_result(request: Request, mode: AnalysisMode, started_at: float) -> AnalysisResponse:
     return AnalysisResponse(
         request_id=getattr(request.state, "request_id", "unknown"),
@@ -364,39 +376,40 @@ async def chat(request: ChatRequest, http_request: Request):
 async def report(request: ReportRequest):
     if request.segmentation_png_base64:
         raise HTTPException(status_code=422, detail="Segmentation overlays cannot be included while Mode B is unavailable.")
-    try:
-        grad_cam = b64decode(request.grad_cam_png_base64, validate=True) if request.grad_cam_png_base64 else None
-    except Exception as exc:
-        raise HTTPException(status_code=422, detail="Report image payload must be valid base64.") from exc
-    try:
-        current_time = int(time.time())
-        verified_receipt = verify_analysis_receipt(request.analysis_receipt, grad_cam, now=current_time)
+    async with report_concurrency_limiter.slot():
         try:
-            await shared_controls.consume_receipt_once(
-                receipt_id=verified_receipt.receipt_id,
-                expires_at=verified_receipt.expires_at,
-                now=current_time,
-                local_fallback=lambda: receipt_module.receipt_replay_guard.consume_once(
-                    verified_receipt.receipt_id, verified_receipt.expires_at, current_time
-                ),
-            )
-        except SharedReplayDetected as exc:
-            raise AnalysisReceiptError("replayed") from exc
-        except SharedControlUnavailable as exc:
-            raise AnalysisReceiptError("replay_guard_unavailable") from exc
-    except AnalysisReceiptError as exc:
-        if exc.category == "signing_unavailable":
-            raise HTTPException(status_code=503, detail="Report integrity signing is not configured; report generation is unavailable.") from exc
-        if exc.category == "replayed":
-            raise HTTPException(status_code=409, detail="This report receipt has already been used; generate a fresh analysis result.") from exc
-        if exc.category == "replay_guard_unavailable":
-            raise HTTPException(status_code=503, detail="Shared report replay protection is unavailable; report generation is temporarily disabled.") from exc
-        raise HTTPException(status_code=422, detail="The report receipt is invalid, expired, or does not match the server-issued Mode A analysis.") from exc
-    try:
-        pdf = build_report(verified_receipt.analysis, grad_cam)
-    except Exception as exc:
-        logger.error("report_generation_failed:%s", exc)
-        raise HTTPException(status_code=500, detail="The research report could not be generated.") from exc
+            grad_cam = await asyncio.to_thread(b64decode, request.grad_cam_png_base64, validate=True) if request.grad_cam_png_base64 else None
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail="Report image payload must be valid base64.") from exc
+        try:
+            current_time = int(time.time())
+            verified_receipt = verify_analysis_receipt(request.analysis_receipt, grad_cam, now=current_time)
+            try:
+                await shared_controls.consume_receipt_once(
+                    receipt_id=verified_receipt.receipt_id,
+                    expires_at=verified_receipt.expires_at,
+                    now=current_time,
+                    local_fallback=lambda: receipt_module.receipt_replay_guard.consume_once(
+                        verified_receipt.receipt_id, verified_receipt.expires_at, current_time
+                    ),
+                )
+            except SharedReplayDetected as exc:
+                raise AnalysisReceiptError("replayed") from exc
+            except SharedControlUnavailable as exc:
+                raise AnalysisReceiptError("replay_guard_unavailable") from exc
+        except AnalysisReceiptError as exc:
+            if exc.category == "signing_unavailable":
+                raise HTTPException(status_code=503, detail="Report integrity signing is not configured; report generation is unavailable.") from exc
+            if exc.category == "replayed":
+                raise HTTPException(status_code=409, detail="This report receipt has already been used; generate a fresh analysis result.") from exc
+            if exc.category == "replay_guard_unavailable":
+                raise HTTPException(status_code=503, detail="Shared report replay protection is unavailable; report generation is temporarily disabled.") from exc
+            raise HTTPException(status_code=422, detail="The report receipt is invalid, expired, or does not match the server-issued Mode A analysis.") from exc
+        try:
+            pdf = await asyncio.to_thread(build_report, verified_receipt.analysis, grad_cam)
+        except Exception as exc:
+            logger.error("report_generation_failed:error_type=%s", type(exc).__name__)
+            raise HTTPException(status_code=500, detail="The research report could not be generated.") from exc
     return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="neuroinsight-{verified_receipt.analysis.scan_id}.pdf"'})
 
 

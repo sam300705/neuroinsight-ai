@@ -63,6 +63,8 @@ Serverless production deployments can use managed Upstash Redis for shared rate-
 
 Blocking model execution runs outside the FastAPI event loop so health/readiness traffic remains responsive. Each service process admits one inference at a time and returns a correlated retryable `503` when that bounded slot cannot be acquired promptly. Checksum-verified ONNX artifacts are published to the local cache with unique temporary files and atomic replacement so concurrent cold starts cannot share or expose a partial artifact.
 
+PDF generation uses a separate one-slot process-local worker boundary. Capacity is admitted before a one-time report receipt is verified or consumed, so an overloaded process returns a retryable `503` without invalidating a valid receipt. This protects event-loop responsiveness and per-process memory; it is not a distributed report queue.
+
 The inference service emits privacy-bounded structured route/status/latency events and marks responses non-cacheable. It does not log scan content, filenames, questions, query strings, client addresses, exception messages, or credentials. External alerts, log drains, recipients, and retention require a separate owner-approved operations setup.
 
 Public deployment, data provenance, calibration, privacy, and release boundaries are documented in `docs/PUBLIC_HANDOVER.md`, `DATASET_AUDIT.md`, `EXPERIMENTS.md`, `docs/CALIBRATION_STATUS.md`, `docs/CAPABILITY_MANIFEST.md`, `docs/BRISC_AUDIT.md`, and `docs/OPEN_GATES.md`.

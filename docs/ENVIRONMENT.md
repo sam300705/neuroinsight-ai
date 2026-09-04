@@ -29,6 +29,8 @@ The service has **no configured `INFERENCE_SERVICE_TOKEN`**. It relies on exact 
 
 Mode A prediction is a blocking CPU operation, so the service moves it to a worker thread and permits one active inference per process. A request that cannot acquire that slot within one second receives a correlated HTTP `503` with `Retry-After: 2`; callers may retry deliberately, but the browser does not automatically replay analysis POSTs. This is a process-local memory/availability boundary, not a distributed queue or capacity guarantee.
 
+PDF generation follows an independent one-slot process-local worker boundary with the same one-second admission deadline and retry guidance. Admission occurs before report-receipt verification and single-use consumption, so local overload does not burn an otherwise valid receipt. A build failure after replay-state consumption still requires a fresh analysis receipt; no distributed job queue or rollback transaction is claimed.
+
 The dashboard remains usable without the inference settings, presenting explicit model-unavailable states and the offline FAQ fallback. Supplying runtime variables does not promote a new model, enable segmentation, store raw MRI uploads, or remove the permanent non-diagnostic boundary.
 
 ## Optional Research Explanation Assistant

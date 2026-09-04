@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 import logging
 import json
 import time
@@ -16,6 +17,7 @@ from neuroinsight_api.app import app
 import neuroinsight_api.app as app_module
 from neuroinsight_api.analysis_receipts import ReceiptReplayGuard, issue_analysis_receipt
 from neuroinsight_api.inference_execution import InferenceBusyError
+from neuroinsight_api.report_execution import ReportBusyError
 from neuroinsight_api.rate_limit import FixedWindowRateLimiter
 from neuroinsight_api.schemas import AnalysisMode
 from neuroinsight_api.upload_validation import UploadValidationError, validate_upload
@@ -243,6 +245,36 @@ def test_report_rejects_malformed_or_oversized_declared_requests_before_model_pa
     assert "exceeds the 15 MB limit" in oversized.json()["detail"]
 
 
+def test_busy_report_capacity_fails_before_receipt_verification(monkeypatch):
+    class BusyLimiter:
+        @asynccontextmanager
+        async def slot(self):
+            raise ReportBusyError("private queue detail")
+            yield
+
+    monkeypatch.setattr(app_module, "report_concurrency_limiter", BusyLimiter())
+    monkeypatch.setattr(
+        app_module,
+        "verify_analysis_receipt",
+        lambda *_args, **_kwargs: pytest.fail("busy requests must not consume or verify a receipt"),
+    )
+
+    response = client.post(
+        "/api/v1/report",
+        json={"analysis_receipt": "v1.aaaaaaaaaaaaaa.bbbbbbbbbbbbb"},
+        headers={"x-request-id": "busy-report-test"},
+    )
+
+    assert response.status_code == 503
+    assert response.headers["retry-after"] == "2"
+    assert response.headers["x-request-id"] == "busy-report-test"
+    assert response.json() == {
+        "request_id": "busy-report-test",
+        "detail": "Report capacity is busy; please retry shortly.",
+    }
+    assert "private queue detail" not in response.text
+
+
 def test_classify_validates_input_but_does_not_fabricate_prediction():
     response = client.post(
         "/api/v1/classify",
@@ -453,6 +485,41 @@ def test_classification_pdf_report_declares_academic_scope_and_unavailable_measu
     assert "Manual review" in text
     assert "Academic and research use" in text
     assert "Grad-CAM attribution" in text
+
+
+def test_report_failure_log_omits_exception_message(monkeypatch, caplog):
+    import neuroinsight_api.analysis_receipts as receipt_module
+    from neuroinsight_api.schemas import AnalysisResponse, Measurement
+
+    private_marker = "private-temporary-path-or-payload-detail"
+    secret = "report-failure-test-secret-that-is-at-least-thirty-two-bytes"
+    monkeypatch.setenv("ANALYSIS_RECEIPT_SECRET", secret)
+    monkeypatch.setattr(receipt_module, "receipt_replay_guard", ReceiptReplayGuard())
+    monkeypatch.setattr(app_module, "build_report", lambda *_args: (_ for _ in ()).throw(RuntimeError(private_marker)))
+    caplog.set_level(logging.ERROR, logger="neuroinsight_api.app")
+    analysis = AnalysisResponse(
+        request_id="test-request",
+        scan_id="d1fd69b2-62fa-4cbf-bec2-73fe6d12a6fe",
+        mode="classification",
+        status="complete",
+        model_version="bdneuro-v7-resnet50-head-only-exp005",
+        processing_time_ms=4,
+        manual_review_recommended=True,
+        predicted_class="glioma",
+        model_confidence_score=0.7,
+        calibrated=True,
+        measurement=Measurement(kind="unavailable", metadata_confirmed=False, limitation="No physical measurement."),
+        warnings=["Experimental academic result."],
+        limitations=["Academic and research use only."],
+    )
+    receipt = issue_analysis_receipt(analysis)
+
+    response = client.post("/api/v1/report", json={"analysis_receipt": receipt})
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "The research report could not be generated."
+    assert "report_generation_failed:error_type=RuntimeError" in caplog.text
+    assert private_marker not in caplog.text
 
 
 def test_report_rejects_unavailable_mode_b_and_synthetic_segmentation_overlays():
