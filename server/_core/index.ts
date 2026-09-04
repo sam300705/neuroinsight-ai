@@ -5,6 +5,8 @@ import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { csrfSameOriginGuard } from "./csrf";
+import { sessionSecretBytes } from "./authConfig";
+import { ENV } from "./env";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { applyHttpSecurityHeaders, HEADERS_TIMEOUT_MS, KEEP_ALIVE_TIMEOUT_MS, MAX_TRPC_BODY_SIZE, REQUEST_TIMEOUT_MS } from "./httpSecurity";
@@ -22,6 +24,9 @@ function isPortAvailable(port: number): Promise<boolean> {
 }
 
 async function startServer() {
+  const production = process.env.NODE_ENV === "production";
+  if (production) sessionSecretBytes(ENV.cookieSecret, true);
+
   const app = express();
   const server = createServer(app);
   app.disable("x-powered-by");
@@ -50,7 +55,6 @@ async function startServer() {
     serveStatic(app);
   }
 
-  const production = process.env.NODE_ENV === "production";
   const preferredPort = configuredPort(process.env.PORT);
   const port = await selectServerPort(preferredPort, production, isPortAvailable);
   server.requestTimeout = REQUEST_TIMEOUT_MS;

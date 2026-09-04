@@ -41,7 +41,7 @@ jobs:
       - name: Verify corrupt upload and accessibility in a local production build
         run: |
           set -eu
-          NODE_ENV=production PORT=4173 node dist/index.js > /tmp/neuroinsight-browser.log 2>&1 &
+          JWT_SECRET="$(node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('hex'))")" NODE_ENV=production PORT=4173 node dist/index.js > /tmp/neuroinsight-browser.log 2>&1 &
           server_pid=$!
           cleanup() { kill "$server_pid" 2>/dev/null || true; wait "$server_pid" 2>/dev/null || true; }
           trap cleanup EXIT

@@ -4,6 +4,7 @@ The managed application receives its database, authentication, object-storage, a
 
 | Setting | Purpose | Required for |
 |---|---|---|
+| `JWT_SECRET` | Server-only HMAC key for dashboard session tokens; production startup requires at least 32 UTF-8 bytes | Any production dashboard deployment |
 | Platform database connection | Persist account-linked pseudonymous scan-history metadata and derived-artifact references | History features |
 | Platform object-storage credentials | Store derived Mode A reports and Grad-CAM heatmaps only | Authenticated artifact re-download |
 | Built-in language-model credentials | Optional safe contextual-chat enhancement | Optional; offline FAQ remains available without it |
@@ -33,7 +34,7 @@ Mode A image decode, plausibility validation, and prediction are blocking CPU/me
 
 PDF generation follows an independent one-slot process-local worker boundary with the same one-second admission deadline and retry guidance. Admission occurs before report-receipt verification and single-use consumption, so local overload does not burn an otherwise valid receipt. A build failure after replay-state consumption still requires a fresh analysis receipt; no distributed job queue or rollback transaction is claimed.
 
-The dashboard remains usable without the inference settings, presenting explicit model-unavailable states and the offline FAQ fallback. Supplying runtime variables does not promote a new model, enable segmentation, store raw MRI uploads, or remove the permanent non-diagnostic boundary.
+The dashboard remains usable without the inference settings, presenting explicit model-unavailable states and the offline FAQ fallback. Production dashboard startup fails closed when `JWT_SECRET` is absent, blank, or shorter than 32 UTF-8 bytes; use a cryptographically random server-only value and never place it in source control or a `VITE_*` variable. Development authentication also refuses an absent or blank key when session signing or verification is attempted. Supplying runtime variables does not promote a new model, enable segmentation, store raw MRI uploads, or remove the permanent non-diagnostic boundary.
 
 ## Optional Research Explanation Assistant
 

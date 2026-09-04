@@ -6,6 +6,7 @@ import type { Request } from "express";
 import { SignJWT, jwtVerify } from "jose";
 import type { User } from "../../drizzle/schema";
 import * as db from "../db";
+import { sessionSecretBytes } from "./authConfig";
 import { ENV } from "./env";
 import type {
   ExchangeTokenRequest,
@@ -154,8 +155,7 @@ export class SDKServer {
   }
 
   private getSessionSecret() {
-    const secret = ENV.cookieSecret;
-    return new TextEncoder().encode(secret);
+    return sessionSecretBytes(ENV.cookieSecret, ENV.isProduction);
   }
 
   /**
