@@ -10,6 +10,7 @@ import re
 from base64 import b64decode
 from contextlib import asynccontextmanager
 from typing import Protocol
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -36,6 +37,8 @@ assistant_request_limiter = FixedWindowRateLimiter(window_seconds=60, max_reques
 shared_controls = SharedControls.from_env()
 limited_paths = {"/api/v1/analyze", "/api/v1/classify", "/api/v1/segment", "/api/v1/report", "/api/v1/chat"}
 observed_paths = limited_paths | {"/health", "/ready", "/api/v1/model-info", "/api/v1/unsupported"}
+upload_paths = {"/api/v1/analyze", "/api/v1/classify", "/api/v1/segment"}
+DEFAULT_ALLOWED_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000"
 
 
 def _apply_operational_headers(response: Response) -> Response:
@@ -46,8 +49,50 @@ def _apply_operational_headers(response: Response) -> Response:
     return response
 
 
+def _request_id_for(request: Request) -> str:
+    existing = getattr(request.state, "request_id", None)
+    if existing:
+        return existing
+    supplied_id = request.headers.get("x-request-id")
+    request_id = supplied_id if supplied_id and REQUEST_ID_PATTERN.fullmatch(supplied_id) else str(uuid.uuid4())
+    request.state.request_id = request_id
+    return request_id
+
+
 class ClassifierProtocol(Protocol):
     def predict(self, payload: bytes): ...
+
+
+def _configured_allowed_origins(raw_origins: str | None = None) -> list[str]:
+    """Return exact, safe browser origins or fail closed on misconfiguration."""
+    configured = os.getenv("CORS_ALLOWED_ORIGINS", DEFAULT_ALLOWED_ORIGINS) if raw_origins is None else raw_origins
+    allowed: list[str] = []
+    for candidate in configured.split(","):
+        origin = candidate.strip()
+        if not origin:
+            continue
+        try:
+            parsed = urlsplit(origin)
+            port = parsed.port
+        except ValueError as exc:
+            raise RuntimeError("CORS_ALLOWED_ORIGINS contains an invalid origin.") from exc
+        is_loopback = parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+        is_safe_scheme = parsed.scheme == "https" or (parsed.scheme == "http" and is_loopback)
+        if (
+            origin == "*"
+            or not parsed.hostname
+            or not is_safe_scheme
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path
+            or parsed.query
+            or parsed.fragment
+            or (port is not None and not 1 <= port <= 65535)
+        ):
+            raise RuntimeError("CORS_ALLOWED_ORIGINS must contain only exact HTTPS origins or loopback HTTP origins.")
+        if origin not in allowed:
+            allowed.append(origin)
+    return allowed
 
 
 @asynccontextmanager
@@ -79,11 +124,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-allowed_origins = [
-    origin.strip()
-    for origin in os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
-    if origin.strip()
-]
+allowed_origins = _configured_allowed_origins()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
@@ -95,9 +136,7 @@ app.add_middleware(
 
 @app.middleware("http")
 async def request_id_middleware(request: Request, call_next):
-    supplied_id = request.headers.get("x-request-id")
-    request_id = supplied_id if supplied_id and REQUEST_ID_PATTERN.fullmatch(supplied_id) else str(uuid.uuid4())
-    request.state.request_id = request_id
+    request_id = _request_id_for(request)
     response = await call_next(request)
     response.headers["x-request-id"] = request_id
     return response
@@ -105,10 +144,31 @@ async def request_id_middleware(request: Request, call_next):
 
 @app.middleware("http")
 async def public_demo_rate_limit_middleware(request: Request, call_next):
+    if request.method == "POST" and request.url.path in upload_paths:
+        declared_length = request.headers.get("content-length")
+        if declared_length:
+            request_id = _request_id_for(request)
+            try:
+                request_size = int(declared_length)
+            except ValueError:
+                return JSONResponse(
+                    status_code=422,
+                    content={"request_id": request_id, "detail": "The request Content-Length header is invalid."},
+                    headers={"x-request-id": request_id},
+                )
+            if request_size < 0 or request_size > MAX_MULTIPART_REQUEST_BYTES:
+                return JSONResponse(
+                    status_code=422,
+                    content={
+                        "request_id": request_id,
+                        "detail": f"The upload request exceeds the {MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit.",
+                    },
+                    headers={"x-request-id": request_id},
+                )
     if request.method == "POST" and request.url.path == "/api/v1/report":
         declared_length = request.headers.get("content-length")
         if declared_length:
-            request_id = getattr(request.state, "request_id", str(uuid.uuid4()))
+            request_id = _request_id_for(request)
             try:
                 request_size = int(declared_length)
             except ValueError:
@@ -135,15 +195,14 @@ async def public_demo_rate_limit_middleware(request: Request, call_next):
                 local_fallback=lambda: limiter.allow(f"{request.url.path}:{client_host}"),
             )
         except SharedControlUnavailable:
-            request_id = getattr(request.state, "request_id", str(uuid.uuid4()))
+            request_id = _request_id_for(request)
             return JSONResponse(
                 status_code=503,
                 content={"request_id": request_id, "detail": "Shared abuse controls are unavailable; please retry later."},
                 headers={"Retry-After": "5", "x-request-id": request_id},
             )
         if not allowed:
-            request_id = getattr(request.state, "request_id", str(uuid.uuid4()))
-            request.state.request_id = request_id
+            request_id = _request_id_for(request)
             return JSONResponse(
                 status_code=429,
                 content={"request_id": request_id, "detail": "Public demo request limit reached. Please retry later."},

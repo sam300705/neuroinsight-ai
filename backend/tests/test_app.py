@@ -224,6 +224,29 @@ def test_validation_service_allows_only_configured_dashboard_origins():
     assert "POST" in response.headers["access-control-allow-methods"]
 
 
+@pytest.mark.parametrize(
+    "configured",
+    [
+        "*",
+        "http://example.com",
+        "https://example.com/path",
+        "https://user@example.com",
+        "https://example.com?origin=other",
+        "ftp://example.com",
+        "https://example.com:invalid",
+    ],
+)
+def test_cors_configuration_rejects_wildcard_insecure_and_non_origin_values(configured):
+    with pytest.raises(RuntimeError, match="CORS_ALLOWED_ORIGINS"):
+        app_module._configured_allowed_origins(configured)
+
+
+def test_cors_configuration_accepts_exact_https_and_loopback_origins_once():
+    assert app_module._configured_allowed_origins(
+        "https://dashboard.example.com, http://localhost:3000, https://dashboard.example.com"
+    ) == ["https://dashboard.example.com", "http://localhost:3000"]
+
+
 def test_public_demo_rate_limit_returns_retry_after_and_request_id(monkeypatch):
     monkeypatch.setattr(app_module, "public_request_limiter", FixedWindowRateLimiter(window_seconds=60, max_requests=1))
     first = client.post("/api/v1/report", json={})
@@ -243,6 +266,33 @@ def test_report_rejects_malformed_or_oversized_declared_requests_before_model_pa
     assert malformed.headers["x-request-id"] == malformed.json()["request_id"]
     assert oversized.status_code == 422
     assert "exceeds the 15 MB limit" in oversized.json()["detail"]
+
+
+@pytest.mark.parametrize("path", ["/api/v1/analyze", "/api/v1/classify", "/api/v1/segment"])
+def test_upload_routes_reject_bad_declared_sizes_before_multipart_parsing(path):
+    malformed = client.post(
+        path,
+        content=b"not-a-multipart-body",
+        headers={
+            "content-type": "multipart/form-data",
+            "content-length": "unknown",
+            "x-request-id": "bad-upload-size",
+        },
+    )
+    oversized = client.post(
+        path,
+        content=b"not-a-multipart-body",
+        headers={"content-type": "multipart/form-data", "content-length": str(52 * 1024 * 1024)},
+    )
+
+    assert malformed.status_code == 422
+    assert malformed.json() == {
+        "request_id": "bad-upload-size",
+        "detail": "The request Content-Length header is invalid.",
+    }
+    assert malformed.headers["x-request-id"] == "bad-upload-size"
+    assert oversized.status_code == 422
+    assert "exceeds the 50 MB limit" in oversized.json()["detail"]
 
 
 def test_busy_report_capacity_fails_before_receipt_verification(monkeypatch):
