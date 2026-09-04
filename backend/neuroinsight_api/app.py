@@ -7,6 +7,7 @@ import os
 import logging
 import json
 import re
+from ipaddress import ip_address
 from base64 import b64decode
 from contextlib import asynccontextmanager
 from typing import Protocol
@@ -57,6 +58,18 @@ def _request_id_for(request: Request) -> str:
     request_id = supplied_id if supplied_id and REQUEST_ID_PATTERN.fullmatch(supplied_id) else str(uuid.uuid4())
     request.state.request_id = request_id
     return request_id
+
+
+def _rate_limit_identity(request: Request) -> str:
+    """Use Vercel's overwritten client-IP header only inside a declared Vercel runtime."""
+    peer = request.client.host if request.client else "unknown"
+    if os.getenv("VERCEL", "").strip() != "1":
+        return peer
+    forwarded = request.headers.get("x-forwarded-for", "").split(",", 1)[0].strip()
+    try:
+        return str(ip_address(forwarded))
+    except ValueError:
+        return peer
 
 
 class ClassifierProtocol(Protocol):
@@ -184,15 +197,15 @@ async def public_demo_rate_limit_middleware(request: Request, call_next):
                     headers={"x-request-id": request_id},
                 )
     if request.method == "POST" and request.url.path in limited_paths:
-        client_host = request.client.host if request.client else "unknown"
+        client_identity = _rate_limit_identity(request)
         limiter = assistant_request_limiter if request.url.path == "/api/v1/chat" else public_request_limiter
         try:
             allowed, retry_after = await shared_controls.allow(
                 scope="assistant" if request.url.path == "/api/v1/chat" else "public",
-                identity=f"{request.url.path}:{client_host}",
+                identity=f"{request.url.path}:{client_identity}",
                 window_seconds=limiter.window_seconds,
                 max_requests=limiter.max_requests,
-                local_fallback=lambda: limiter.allow(f"{request.url.path}:{client_host}"),
+                local_fallback=lambda: limiter.allow(f"{request.url.path}:{client_identity}"),
             )
         except SharedControlUnavailable:
             request_id = _request_id_for(request)

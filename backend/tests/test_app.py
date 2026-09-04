@@ -12,6 +12,7 @@ import nibabel as nib
 import numpy as np
 import pytest
 from PIL import Image
+from starlette.requests import Request
 
 from neuroinsight_api.app import app
 import neuroinsight_api.app as app_module
@@ -209,6 +210,40 @@ def test_request_id_is_bounded_and_sanitized():
     assert replaced.status_code == 200
     assert replaced.headers["x-request-id"] != oversized
     assert len(replaced.headers["x-request-id"]) <= 128
+
+
+def rate_limit_request(peer: str, forwarded: str | None = None) -> Request:
+    headers = [] if forwarded is None else [(b"x-forwarded-for", forwarded.encode("ascii"))]
+    return Request({"type": "http", "headers": headers, "client": (peer, 443)})
+
+
+def test_rate_limit_identity_ignores_forwarded_header_outside_vercel(monkeypatch):
+    monkeypatch.delenv("VERCEL", raising=False)
+
+    request = rate_limit_request("10.0.0.5", "203.0.113.9")
+
+    assert app_module._rate_limit_identity(request) == "10.0.0.5"
+
+
+def test_rate_limit_identity_uses_vercel_overwritten_client_ip(monkeypatch):
+    monkeypatch.setenv("VERCEL", "1")
+
+    ipv4 = rate_limit_request("10.0.0.5", "203.0.113.9")
+    ipv6 = rate_limit_request("10.0.0.5", "2001:0db8::1")
+    chain = rate_limit_request("10.0.0.5", "198.51.100.7, 10.0.0.2")
+
+    assert app_module._rate_limit_identity(ipv4) == "203.0.113.9"
+    assert app_module._rate_limit_identity(ipv6) == "2001:db8::1"
+    assert app_module._rate_limit_identity(chain) == "198.51.100.7"
+
+
+@pytest.mark.parametrize("forwarded", [None, "", "not-an-ip", "203.0.113.9:443"])
+def test_rate_limit_identity_falls_back_on_missing_or_invalid_vercel_header(monkeypatch, forwarded):
+    monkeypatch.setenv("VERCEL", "1")
+
+    request = rate_limit_request("10.0.0.5", forwarded)
+
+    assert app_module._rate_limit_identity(request) == "10.0.0.5"
 
 
 def test_validation_service_allows_only_configured_dashboard_origins():
