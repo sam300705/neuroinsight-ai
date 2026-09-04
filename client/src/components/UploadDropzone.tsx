@@ -4,7 +4,7 @@ import type { AnalysisMode } from "@shared/neuroinsight";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 export type LocalFileCheck = { valid: boolean; messages: string[]; warnings: string[]; previewUrl?: string };
-export const MAX_CLASSIFICATION_IMAGE_PIXELS = 12_000_000;
+export const MAX_CLASSIFICATION_IMAGE_PIXELS = 4_000_000;
 
 export function validateLocalFile(file: File, mode: AnalysisMode): LocalFileCheck {
   const extension = file.name.toLowerCase().split(".").slice(1).join("."); const maxBytes = 50 * 1024 * 1024; const expected = mode === "classification" ? ["png", "jpg", "jpeg"] : ["nii", "nii.gz"]; const acceptableMime = mode === "classification" ? ["image/png", "image/jpeg"] : ["application/x-nifti", "application/nifti", "application/gzip", ""];
@@ -22,7 +22,7 @@ export function imageQualityWarnings(width: number, height: number) {
 }
 
 export function imagePixelSafetyError(width: number, height: number) {
-  return width * height > MAX_CLASSIFICATION_IMAGE_PIXELS ? "The selected image exceeds the 12-megapixel safety limit for this research classifier." : null;
+  return width * height > MAX_CLASSIFICATION_IMAGE_PIXELS ? "The selected image exceeds the 4-megapixel safety limit for this research classifier." : null;
 }
 
 export async function validateFileContent(file: File, mode: AnalysisMode): Promise<{ messages: string[]; warnings: string[] }> {

@@ -15,6 +15,7 @@ from urllib.request import urlopen
 import numpy as np
 import onnxruntime as ort
 from PIL import Image
+from .constants import MAX_GRAD_CAM_EDGE_PIXELS
 from .model_contract import IMAGE_SIZE, MODEL_LABELS, PUBLIC_LABELS, NORMALIZATION_MEAN, NORMALIZATION_STD, validate_calibration, validate_metadata
 
 
@@ -170,6 +171,8 @@ class OnnxExperimentalClassifier:
 
     def predict(self, payload: bytes) -> ExperimentalPrediction:
         image = Image.open(io.BytesIO(payload)).convert("RGB")
+        overlay_base = image.copy()
+        overlay_base.thumbnail((MAX_GRAD_CAM_EDGE_PIXELS, MAX_GRAD_CAM_EDGE_PIXELS), Image.Resampling.LANCZOS)
         input_image = image.resize((self.image_size, self.image_size), Image.Resampling.BILINEAR)
         tensor = np.asarray(input_image, dtype=np.float32) / 255.0
         tensor = (tensor - np.asarray(NORMALIZATION_MEAN, dtype=np.float32)) / np.asarray(NORMALIZATION_STD, dtype=np.float32)
@@ -181,9 +184,9 @@ class OnnxExperimentalClassifier:
         index = int(probabilities.argmax())
         confidence = float(probabilities[index])
         heatmap = np.maximum((self.fc_weights[index, :, None, None] * feature_maps[0]).sum(axis=0), 0.0)
-        heatmap = np.asarray(Image.fromarray(heatmap.astype(np.float32)).resize(image.size, Image.Resampling.BILINEAR), dtype=np.float32)
+        heatmap = np.asarray(Image.fromarray(heatmap.astype(np.float32)).resize(overlay_base.size, Image.Resampling.BILINEAR), dtype=np.float32)
         heatmap = (heatmap - heatmap.min()) / max(float(heatmap.max() - heatmap.min()), 1e-8)
-        base = np.asarray(image, dtype=np.float32) / 255.0
+        base = np.asarray(overlay_base, dtype=np.float32) / 255.0
         colour = np.zeros_like(base)
         colour[..., 0] = heatmap
         colour[..., 1] = 0.15 + 0.55 * (1 - np.abs(heatmap - 0.5) * 2)

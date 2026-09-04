@@ -18,7 +18,12 @@ function getForgeConfig() {
 }
 
 function normalizeKey(relKey: string): string {
-  return relKey.replace(/^\/+/, "");
+  const key = relKey.replace(/^\/+/, "");
+  const segments = key.split("/");
+  if (!key || segments.some(segment => !segment || segment === "." || segment === "..") || /[\\\0\r\n]/.test(key)) {
+    throw new Error("Storage key is invalid");
+  }
+  return key;
 }
 
 function appendHashSuffix(relKey: string): string {
@@ -28,15 +33,13 @@ function appendHashSuffix(relKey: string): string {
   return `${relKey.slice(0, lastDot)}_${hash}${relKey.slice(lastDot)}`;
 }
 
-export async function storagePut(
-  relKey: string,
+async function storagePutAtResolvedKey(
+  key: string,
   data: Buffer | Uint8Array | string,
-  contentType = "application/octet-stream",
+  contentType: string,
 ): Promise<{ key: string; url: string }> {
   const { forgeUrl, forgeKey } = getForgeConfig();
-  const key = appendHashSuffix(normalizeKey(relKey));
 
-  // 1. Get presigned PUT URL from Forge
   const presignUrl = new URL("v1/storage/presign/put", forgeUrl + "/");
   presignUrl.searchParams.set("path", key);
 
@@ -45,14 +48,12 @@ export async function storagePut(
   });
 
   if (!presignResp.ok) {
-    const msg = await presignResp.text().catch(() => presignResp.statusText);
-    throw new Error(`Storage presign failed (${presignResp.status}): ${msg}`);
+    throw new Error(`Storage presign failed (${presignResp.status})`);
   }
 
   const { url: s3Url } = (await presignResp.json()) as { url: string };
   if (!s3Url) throw new Error("Forge returned empty presign URL");
 
-  // 2. PUT file directly to S3
   const blob =
     typeof data === "string"
       ? new Blob([data], { type: contentType })
@@ -69,6 +70,24 @@ export async function storagePut(
   }
 
   return { key, url: `/manus-storage/${key}` };
+}
+
+export async function storagePut(
+  relKey: string,
+  data: Buffer | Uint8Array | string,
+  contentType = "application/octet-stream",
+): Promise<{ key: string; url: string }> {
+  const key = appendHashSuffix(normalizeKey(relKey));
+  return storagePutAtResolvedKey(key, data, contentType);
+}
+
+/** Idempotent overwrite used only for an owned scan's single artifact slot. */
+export async function storagePutStable(
+  relKey: string,
+  data: Buffer | Uint8Array | string,
+  contentType = "application/octet-stream",
+): Promise<{ key: string; url: string }> {
+  return storagePutAtResolvedKey(normalizeKey(relKey), data, contentType);
 }
 
 export async function storageGet(relKey: string): Promise<{ key: string; url: string }> {
@@ -94,4 +113,19 @@ export async function storageGetSignedUrl(relKey: string): Promise<string> {
 
   const { url } = (await resp.json()) as { url: string };
   return url;
+}
+
+/** Physically removes a derived object; missing objects are treated as deleted. */
+export async function storageDelete(relKey: string): Promise<void> {
+  const { forgeUrl, forgeKey } = getForgeConfig();
+  const key = normalizeKey(relKey);
+  const deleteUrl = new URL("v1/storage/delete", forgeUrl + "/");
+  deleteUrl.searchParams.set("path", key);
+  const response = await fetch(deleteUrl, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${forgeKey}` },
+  });
+  if (!response.ok && response.status !== 404) {
+    throw new Error(`Storage deletion failed (${response.status})`);
+  }
 }

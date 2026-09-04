@@ -1,6 +1,6 @@
 # NeuroInsight AI — Project Status
 
-**Last updated:** 2026-08-27
+**Last updated:** 2026-09-03
 **Current readiness:** **Level 1 — functional academic demonstration.** The project is not a medical device, a patient-level validated system, or a clinical deployment.
 
 > **Required notice:** “This system is not a medical diagnosis and must not replace a qualified radiologist.”
@@ -20,7 +20,7 @@ The public dashboard is <https://neuroaiapp-gtbxy6cw.manus.space>. Its CORS-rest
 
 ## Verified evidence
 
-EXP-005 achieved held-out fixed-split **image-level** accuracy `0.8099`, macro-F1 `0.8080`, and weighted-F1 `0.8110`. These results are not patient-independent, external, clinical, diagnostic, or medical-probability evidence. Current branch evidence is **48** Vitest tests, **100** FastAPI tests, and **8** ML/data tests; passing TypeScript/build/coverage/bundle gates; clean production Node and locked Python dependency audits; SBOM/container-smoke CI checks; deterministic browser checks; receipt-protected report integrity; and strict Mode B failure boundaries. These current-PR totals do not mean the public dashboard has been republished. Earlier public-recovery browser inference and signed-in artifact-retrieval evidence remains historical release evidence. See `docs/TEST_REPORT.md` for methods and boundaries.
+EXP-005 achieved held-out fixed-split **image-level** accuracy `0.8099`, macro-F1 `0.8080`, and weighted-F1 `0.8110`. These results are not patient-independent, external, clinical, diagnostic, or medical-probability evidence. Current branch evidence is **54** Vitest tests, **103** FastAPI tests, and **8** ML/data tests; passing TypeScript, build, bundle, and selected-module coverage gates; clean production Node and Python audits; receipt-protected report integrity; obvious non-MRI rejection; bounded 512-pixel Grad-CAM output; retry-safe deterministic artifact keys; physical-delete-before-metadata behavior; and strict Mode B failure boundaries. These branch totals do not mean the public dashboard has been republished, and passing the heuristic input screen does not prove MRI modality or in-distribution status. See `docs/TEST_REPORT.md` for methods and boundaries.
 
 ## Current research work
 

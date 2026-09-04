@@ -1,7 +1,11 @@
+import base64
 import hashlib
+from io import BytesIO
 import json
 
+import numpy as np
 import pytest
+from PIL import Image
 
 from neuroinsight_api.model_contract import IMAGE_SIZE, MODEL_LABELS, NORMALIZATION_MEAN, NORMALIZATION_STD, PUBLIC_LABELS, validate_calibration, validate_metadata
 from neuroinsight_api.onnx_classifier_runtime import ClassifierInitializationError, OnnxExperimentalClassifier, _download_verified_https, configured_onnx_classifier
@@ -169,3 +173,39 @@ def test_onnx_initialization_checks_input_output_names_and_fixed_160px_shapes(tm
     monkeypatch.setattr("neuroinsight_api.onnx_classifier_runtime.ort.InferenceSession", lambda *_args, **_kwargs: InvalidSession())
     with pytest.raises(ClassifierInitializationError, match="contract_mismatch"):
         OnnxExperimentalClassifier(model, metadata, calibration)
+
+
+def test_grad_cam_overlay_is_bounded_independently_of_upload_resolution(tmp_path, monkeypatch):
+    metadata = tmp_path / "metadata.json"
+    calibration = tmp_path / "calibration.json"
+    model = tmp_path / "model.onnx"
+    weights = [[0.0] * 2048 for _ in range(4)]
+    weights[0][0] = 1.0
+    metadata.write_text(json.dumps({"architecture": "resnet50", "labels": MODEL_LABELS, "image_size": 160, "final_fc_weights": weights}), encoding="utf-8")
+    calibration.write_text(json.dumps({"temperature": 1.0, "abstention_policy": {"threshold": 0.55}}), encoding="utf-8")
+    model.write_bytes(b"fixture")
+
+    class Item:
+        def __init__(self, name, shape):
+            self.name, self.shape = name, shape
+
+    class PredictionSession:
+        def get_inputs(self):
+            return [Item("image", [1, 3, 160, 160])]
+
+        def get_outputs(self):
+            return [Item("logits", [1, 4]), Item("feature_maps", [1, 2048, 5, 5])]
+
+        def run(self, _outputs, _inputs):
+            logits = np.asarray([[4.0, 0.0, 0.0, 0.0]], dtype=np.float32)
+            feature_maps = np.zeros((1, 2048, 5, 5), dtype=np.float32)
+            feature_maps[0, 0, 1:4, 1:4] = 1.0
+            return logits, feature_maps
+
+    monkeypatch.setattr("neuroinsight_api.onnx_classifier_runtime.ort.InferenceSession", lambda *_args, **_kwargs: PredictionSession())
+    classifier = OnnxExperimentalClassifier(model, metadata, calibration)
+    source = BytesIO()
+    Image.linear_gradient("L").resize((1200, 900)).save(source, format="PNG")
+    prediction = classifier.predict(source.getvalue())
+    with Image.open(BytesIO(base64.b64decode(prediction.grad_cam_png_base64))) as overlay:
+        assert max(overlay.size) <= 512

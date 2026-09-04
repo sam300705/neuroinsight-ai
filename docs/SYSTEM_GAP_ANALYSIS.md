@@ -1,6 +1,6 @@
 # System Gap Analysis
 
-**Assessment scope:** NeuroInsight AI PR #1, `feature/overnight-safe-improvements`, assessed on 2026-08-23. This is an engineering and research-readiness record, not a clinical, legal, privacy-certification, or regulatory assessment.
+**Assessment scope:** NeuroInsight AI PR #1, `feature/overnight-safe-improvements`, updated on 2026-09-03. This is an engineering and research-readiness record, not a clinical, legal, privacy-certification, or regulatory assessment.
 
 ## Verified system state
 
@@ -10,7 +10,7 @@
 | Mode A classifier | Available | EXP-005 provides experimental four-class 2D inference, validation-only calibration, abstention, real Grad-CAM, and PDF reporting. Its reported performance is fixed-split image-level only. [2] |
 | Mode B segmentation | Unavailable by design | No full-volume model, case-disjoint held-out evaluation, calibrated uncertainty policy, or release decision exists. No masks, volume, measurements, or 3D output are shown as real outputs. [3] |
 | Upload and derived artifacts | Available with constraints | Original MRI uploads are not stored by default. Consented derived report/Grad-CAM artifacts are ownership-scoped and retrieved through freshly issued signed URLs. [4] |
-| History deletion | Metadata lifecycle implemented | Per-record and delete-all actions delete only the authenticated user’s artifact and scan metadata. The supplied storage abstraction has no physical object-delete endpoint; unreferenced derived objects become unreachable through the application. [4] |
+| History deletion | Phase 0 implementation complete; provider integration pending | Per-record and delete-all actions validate the authenticated namespace, delete physical derived objects first, and erase metadata only after storage succeeds. Exact-head provider integration remains a release check. [4] |
 | Deployment | Partial platform deployment | The dashboard and separate inference service are verified. This is not a claim that every research, storage, or full-volume worker component is production deployed. [5] |
 
 ## Defects addressed in this pull request
@@ -24,8 +24,9 @@
 | Browser/server controls had no focused regression coverage for fresh signed downloads and cross-user deletion denial. | Extracted ownership-gated download and metadata-lifecycle logic into tested helpers. | Unit tests deny signing/deletion outside ownership, issue a fresh URL after a scoped lookup, and preserve deletion order. [4] |
 | An authenticated API client could previously submit a Mode B scan record or segmentation/3D artifact despite the unavailable public capability. | Added server-side fail-closed rejection for Mode B persistence and artifact registration. | Direct validation tests show that valid Mode A persistence remains available while Mode B inputs are rejected. [6] |
 | The public report endpoint could previously accept a segmentation analysis payload and synthetic mask overlay although Mode B is unavailable. | Restricted report generation to Mode A classification analysis and rejected segmentation report requests. | FastAPI regression tests confirm Mode A PDF generation and unavailable Mode B report refusal. [6] |
-| Inference uploads lacked early byte, pixel-budget, decoder-warning, and incompatible-channel protections. | Added bounded upload reads, content-length rejection, a 12-megapixel limit, decompression-bomb escalation, and explicit mode validation; added matching browser-side preflight feedback. | FastAPI and web regression tests cover oversized, unsafe, unsupported, and valid input paths. [6] |
-| The production dependency audit contained critical and high findings in direct and unused runtime dependencies. | Updated direct runtime dependencies, removed two unreachable prebuilt UI wrappers, and refreshed the lockfile. | `pnpm audit --prod --audit-level=high` reports no known vulnerabilities; full type, test, and build validation is run after the changes. [6] |
+| Inference accepted obvious non-MRI files and allowed avoidable original-resolution overlay memory growth. | Added a fail-closed 4-megapixel limit plus grayscale, intensity, background, and minimum-dimension plausibility checks; bounded Grad-CAM to a 512-pixel longest edge. | FastAPI regression proves a solid-red PNG, blank image, and non-scan-like full-frame image are rejected before inference; ONNX regression bounds derived output. This heuristic is not a validated MRI/OOD detector. [6] |
+| Artifact registration used temporary database claims that could become stuck or create unique orphan keys. | Replaced pending claims with deterministic owner/scan/type keys and an idempotent database upsert. Physical deletion now occurs before metadata deletion and fails retryably. | Lifecycle tests cover physical-delete ordering, storage failure, namespace rejection, legacy pending download rejection, single delete, and delete-all. Live provider deletion remains a manual integration gate. [4] |
+| Newly disclosed `mysql2` and transitive `qs` advisories affected the branch lockfile. | Upgraded `mysql2` to `3.24.3`, pinned patched `qs` `6.16.0`, and refreshed the exact pnpm lock. | `pnpm audit --prod --audit-level=moderate` reports no known vulnerabilities. [6] |
 
 ## Remaining non-automatic gates
 

@@ -25,6 +25,16 @@ MAX_MULTIPART_REQUEST_BYTES = MAX_UPLOAD_BYTES + 1024 * 1024
 # image. This limit is deliberately below two maximum base64 fields, preventing
 # duplicate/crafted report payloads from consuming avoidable serverless memory.
 MAX_REPORT_REQUEST_BYTES = 15 * 1024 * 1024
-# A 12-megapixel RGB image already expands to roughly 36 MB before inference
-# intermediates. MRI classification inputs are normally far smaller.
-MAX_IMAGE_PIXELS = 12_000_000
+# Inference itself uses 160 px inputs. Keeping decoded uploads below 4 MP limits
+# serverless memory pressure while still accepting ordinary exported MRI slices.
+MAX_IMAGE_PIXELS = 4_000_000
+MIN_CLASSIFICATION_EDGE_PIXELS = 96
+MRI_PLAUSIBILITY_SAMPLE_EDGE = 256
+MAX_CHROMATIC_PIXEL_FRACTION = 0.02
+MIN_LUMINANCE_STANDARD_DEVIATION = 8.0
+MIN_LUMINANCE_DYNAMIC_RANGE = 32.0
+MIN_DARK_BORDER_FRACTION = 0.12
+
+# Grad-CAM is an explanatory thumbnail, not a diagnostic-resolution artifact.
+# Bounding it prevents original-resolution float arrays and oversized base64 JSON.
+MAX_GRAD_CAM_EDGE_PIXELS = 512

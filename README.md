@@ -8,6 +8,8 @@ NeuroInsight AI is a **non-clinical academic demonstration** of explainable 2D b
 
 Mode A performs real experimental four-class 2D classification—glioma, meningioma, pituitary tumour, or no tumour—using the deployed EXP-005 ResNet50 head-only model. The earlier owner-approved public recovery release verified a validation-calibrated model-confidence score, low-confidence/manual-review state, genuine Grad-CAM attribution, and a derived academic PDF. In the current PR, a PDF additionally requires a server-issued signed receipt and owner-configured signing secret; without it, the branch makes report saving unavailable rather than fabricating a download. With explicit consent on the earlier release, a signed-in user may save only account-linked pseudonymous result metadata and derived Mode A PDF/Grad-CAM artifacts; original uploads are not stored by default, and each re-download receives a fresh ownership-checked URL.
 
+The current branch rejects obviously incompatible inputs before inference using a conservative grayscale, intensity-structure, dark-border, dimension, and pixel-budget screen. This prevents blank and strongly chromatic non-MRI images from receiving a tumour class, but it is not a trained MRI-modality or out-of-distribution detector. Passing the screen does not prove that an image is an MRI or that a result is medically meaningful.
+
 On the audited BDNeuro-MRI v7 fixed image-level test split, EXP-005 recorded accuracy `0.8099`, macro-F1 `0.8080`, and weighted-F1 `0.8110`. These are experimental image-level results only, not patient-level, external, clinical, diagnostic, or medical-probability evidence.
 
 ### Optional research explanation

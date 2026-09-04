@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, like, lt } from "drizzle-orm";
 import { scanArtifacts, scanRecords } from "../../drizzle/schema";
 import { getDb } from "../db";
-import { storageGetSignedUrl, storagePut } from "../storage";
+import { storageDelete, storageGetSignedUrl, storagePutStable } from "../storage";
 import { artifactRegistrationSchema, scanResultSchema, validateArtifactPayload } from "./validation";
 import { deleteAllOwnedScans, deleteOwnedScan, issueOwnedArtifactDownload } from "./artifactLifecycle";
 import { ACTIVE_HISTORY_MODE, historyListInputSchema } from "./historyPolicy";
@@ -19,7 +19,7 @@ export const scansRouter = router({
     const artifacts = page.length
       ? await db.select().from(scanArtifacts).where(inArray(scanArtifacts.scanRecordId, page.map(record => record.id)))
       : [];
-    return { items: page.map(record => ({ ...record, confidenceScore: record.confidenceScore === null ? null : Number(record.confidenceScore), calibrated: Boolean(record.calibrated), manualReviewRecommended: Boolean(record.manualReviewRecommended), measurement: JSON.parse(record.measurementJson), warnings: JSON.parse(record.warningsJson), artifacts: artifacts.filter(artifact => artifact.scanRecordId === record.id).map(artifact => ({ id: artifact.id, artifactType: artifact.artifactType, contentType: artifact.contentType, createdAt: artifact.createdAt })) })), nextCursor: hasNextPage ? page.at(-1)?.id ?? null : null };
+    return { items: page.map(record => ({ ...record, confidenceScore: record.confidenceScore === null ? null : Number(record.confidenceScore), calibrated: Boolean(record.calibrated), manualReviewRecommended: Boolean(record.manualReviewRecommended), measurement: JSON.parse(record.measurementJson), warnings: JSON.parse(record.warningsJson), artifacts: artifacts.filter(artifact => artifact.scanRecordId === record.id && !artifact.storageKey.startsWith("pending:")).map(artifact => ({ id: artifact.id, artifactType: artifact.artifactType, contentType: artifact.contentType, createdAt: artifact.createdAt })) })), nextCursor: hasNextPage ? page.at(-1)?.id ?? null : null };
   }),
 
   saveResult: protectedProcedure.input(scanResultSchema).mutation(async ({ ctx, input }) => {
@@ -47,23 +47,11 @@ export const scansRouter = router({
     const [record] = await db.select().from(scanRecords).where(and(eq(scanRecords.userId, ctx.user.id), eq(scanRecords.scanId, input.scanId))).limit(1);
     if (!record) throw new Error("Scan record was not found for this user.");
     const bytes = validateArtifactPayload(input.base64, input.contentType);
-    const claimKey = `pending:${crypto.randomUUID()}`;
-    try {
-      await db.insert(scanArtifacts).values({ scanRecordId: record.id, artifactType: input.artifactType, storageKey: claimKey, storageUrl: "ownership-scoped-download-only", contentType: input.contentType });
-    } catch {
-      const [existing] = await db.select().from(scanArtifacts).where(and(eq(scanArtifacts.scanRecordId, record.id), eq(scanArtifacts.artifactType, input.artifactType))).limit(1);
-      if (!existing) throw new Error("Artifact registration could not be claimed. Please retry.");
-      return { artifactType: existing.artifactType, contentType: existing.contentType, existing: true, pending: existing.storageKey.startsWith("pending:") };
-    }
-    let stored: { key: string; url: string };
-    try {
-      stored = await storagePut(`neuroinsight/${ctx.user.id}/${input.scanId}/${input.artifactType}-${input.fileName}`, bytes, input.contentType);
-      await db.update(scanArtifacts).set({ storageKey: stored.key }).where(and(eq(scanArtifacts.scanRecordId, record.id), eq(scanArtifacts.artifactType, input.artifactType), eq(scanArtifacts.storageKey, claimKey)));
-    } catch (error) {
-      await db.delete(scanArtifacts).where(and(eq(scanArtifacts.scanRecordId, record.id), eq(scanArtifacts.artifactType, input.artifactType), eq(scanArtifacts.storageKey, claimKey)));
-      throw error;
-    }
-    return { artifactType: input.artifactType, contentType: input.contentType, existing: false };
+    const [existing] = await db.select({ id: scanArtifacts.id }).from(scanArtifacts).where(and(eq(scanArtifacts.scanRecordId, record.id), eq(scanArtifacts.artifactType, input.artifactType))).limit(1);
+    const extension = input.artifactType === "report" ? "pdf" : "png";
+    const stored = await storagePutStable(`neuroinsight/${ctx.user.id}/${input.scanId}/${input.artifactType}.${extension}`, bytes, input.contentType);
+    await db.insert(scanArtifacts).values({ scanRecordId: record.id, artifactType: input.artifactType, storageKey: stored.key, storageUrl: "ownership-scoped-download-only", contentType: input.contentType }).onDuplicateKeyUpdate({ set: { storageKey: stored.key, storageUrl: "ownership-scoped-download-only", contentType: input.contentType } });
+    return { artifactType: input.artifactType, contentType: input.contentType, existing: Boolean(existing), pending: false };
   }),
 
   getArtifactDownload: protectedProcedure.input(z.object({ artifactId: z.number().int().positive() })).query(async ({ ctx, input }) => {
@@ -88,8 +76,11 @@ export const scansRouter = router({
     return deleteOwnedScan(ctx.user.id, input.scanId, {
       findOwnedScan: async (userId, scanId) => {
         const [record] = await db.select({ id: scanRecords.id }).from(scanRecords).where(and(eq(scanRecords.userId, userId), eq(scanRecords.scanId, scanId))).limit(1);
-        return record;
+        if (!record) return undefined;
+        const artifacts = await db.select({ id: scanArtifacts.id, storageKey: scanArtifacts.storageKey, artifactType: scanArtifacts.artifactType }).from(scanArtifacts).where(eq(scanArtifacts.scanRecordId, record.id));
+        return { ...record, artifacts };
       },
+      deleteStoredArtifact: storageDelete,
       deleteArtifactMetadata: async recordId => { await db.delete(scanArtifacts).where(eq(scanArtifacts.scanRecordId, recordId)); },
       deleteScanMetadata: async recordId => { await db.delete(scanRecords).where(eq(scanRecords.id, recordId)); },
     });
@@ -98,9 +89,15 @@ export const scansRouter = router({
   deleteAll: protectedProcedure.input(z.object({ confirmation: z.literal("DELETE_ALL_RESEARCH_HISTORY") })).mutation(async ({ ctx }) => {
     const db = await getDb(); if (!db) throw new Error("Scan history database is unavailable.");
     return deleteAllOwnedScans(ctx.user.id, {
-      listOwnedScanIds: async userId => (await db.select({ id: scanRecords.id }).from(scanRecords).where(eq(scanRecords.userId, userId))).map(record => record.id),
+      listOwnedScans: async userId => {
+        const records = await db.select({ id: scanRecords.id }).from(scanRecords).where(eq(scanRecords.userId, userId));
+        if (!records.length) return [];
+        const artifacts = await db.select({ id: scanArtifacts.id, scanRecordId: scanArtifacts.scanRecordId, storageKey: scanArtifacts.storageKey, artifactType: scanArtifacts.artifactType }).from(scanArtifacts).where(inArray(scanArtifacts.scanRecordId, records.map(record => record.id)));
+        return records.map(record => ({ ...record, artifacts: artifacts.filter(artifact => artifact.scanRecordId === record.id).map(({ scanRecordId: _scanRecordId, ...artifact }) => artifact) }));
+      },
+      deleteStoredArtifact: storageDelete,
       deleteArtifactMetadata: async recordId => { await db.delete(scanArtifacts).where(eq(scanArtifacts.scanRecordId, recordId)); },
-      deleteAllScanMetadata: async userId => { await db.delete(scanRecords).where(eq(scanRecords.userId, userId)); },
+      deleteScanMetadata: async recordId => { await db.delete(scanRecords).where(eq(scanRecords.id, recordId)); },
     });
   }),
 });

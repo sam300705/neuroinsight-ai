@@ -23,7 +23,12 @@ client = TestClient(app)
 
 
 def png_bytes() -> bytes:
-    image = Image.new("L", (8, 8), color=127)
+    y, x = np.ogrid[:128, :128]
+    radius = np.sqrt(((x - 63.5) / 48) ** 2 + ((y - 63.5) / 56) ** 2)
+    pixels = np.zeros((128, 128), dtype=np.uint8)
+    inside = radius <= 1
+    pixels[inside] = np.clip(205 - radius[inside] * 145 + 18 * np.cos(x.repeat(128, axis=0)[inside] / 7), 18, 230)
+    image = Image.fromarray(pixels, mode="L")
     output = BytesIO()
     image.save(output, format="PNG")
     return output.getvalue()
@@ -43,7 +48,9 @@ def nifti_bytes() -> bytes:
 
 def test_health_and_model_info_are_honest_about_model_state():
     assert client.get("/health").json()["status"] == "ok"
-    assert client.get("/ready").json()["ready"] is False
+    readiness = client.get("/ready")
+    assert readiness.status_code == 503
+    assert readiness.json()["ready"] is False
     assert all(item["status"] == "unavailable" for item in client.get("/api/v1/model-info").json())
 
 
@@ -152,6 +159,42 @@ def test_classify_rejects_wrong_extension_and_corrupted_image():
     )
     assert wrong_extension.status_code == 422
     assert corrupt.status_code == 422
+
+
+def test_classify_rejects_obviously_non_mri_images_before_inference(monkeypatch):
+    calls = 0
+
+    class ShouldNotRun:
+        def predict(self, _payload):
+            nonlocal calls
+            calls += 1
+            raise AssertionError("obviously incompatible input must not reach inference")
+
+    monkeypatch.setattr(app.state, "classifier", ShouldNotRun())
+    output = BytesIO()
+    Image.new("RGB", (160, 160), color=(255, 0, 0)).save(output, format="PNG")
+    response = client.post(
+        "/api/v1/classify",
+        files={"file": ("not-an-mri.png", output.getvalue(), "image/png")},
+    )
+    assert response.status_code == 422
+    assert "grayscale brain MRI" in response.json()["detail"]
+    assert calls == 0
+    monkeypatch.setattr(app.state, "classifier", None)
+
+
+def test_classify_rejects_blank_and_full_frame_grayscale_images():
+    blank = BytesIO()
+    Image.new("L", (160, 160), color=127).save(blank, format="PNG")
+    full_frame = BytesIO()
+    checker = (80 + ((np.indices((160, 160)).sum(axis=0) // 8) % 2) * 100).astype(np.uint8)
+    Image.fromarray(checker, mode="L").save(full_frame, format="PNG")
+    blank_response = client.post("/api/v1/classify", files={"file": ("blank.png", blank.getvalue(), "image/png")})
+    frame_response = client.post("/api/v1/classify", files={"file": ("frame.png", full_frame.getvalue(), "image/png")})
+    assert blank_response.status_code == 422
+    assert "blank or lacks enough intensity structure" in blank_response.json()["detail"]
+    assert frame_response.status_code == 422
+    assert "background structure" in frame_response.json()["detail"]
 
 
 def test_classify_rejects_oversized_declared_requests_and_unsupported_channels():

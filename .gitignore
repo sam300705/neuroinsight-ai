@@ -65,6 +65,10 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+coverage.json
+coverage/
+*.egg-info/
 .venv/
 venv/
 env/

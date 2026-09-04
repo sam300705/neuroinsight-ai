@@ -194,7 +194,8 @@ async def health():
 @app.get("/ready")
 async def ready():
     classifier = getattr(app.state, "classifier", None)
-    return {"ready": bool(classifier), "reason": "Experimental classifier configured; academic non-clinical scope only." if classifier else MODEL_UNAVAILABLE_MESSAGE}
+    payload = {"ready": bool(classifier), "reason": "Experimental classifier configured; academic non-clinical scope only." if classifier else MODEL_UNAVAILABLE_MESSAGE}
+    return payload if classifier else JSONResponse(status_code=503, content=payload)
 
 
 @app.get("/api/v1/model-info", response_model=list[ModelInfo])

@@ -1,4 +1,5 @@
 export type OwnedArtifact = { id: number; storageKey: string; artifactType: string };
+export type OwnedScan = { id: number; artifacts: OwnedArtifact[] };
 
 type DownloadDependencies = {
   findOwnedArtifact: (userId: number, artifactId: number) => Promise<OwnedArtifact | undefined>;
@@ -6,16 +7,32 @@ type DownloadDependencies = {
 };
 
 type DeleteOneDependencies = {
-  findOwnedScan: (userId: number, scanId: string) => Promise<{ id: number } | undefined>;
+  findOwnedScan: (userId: number, scanId: string) => Promise<OwnedScan | undefined>;
+  deleteStoredArtifact: (storageKey: string) => Promise<void>;
   deleteArtifactMetadata: (scanRecordId: number) => Promise<void>;
   deleteScanMetadata: (scanRecordId: number) => Promise<void>;
 };
 
 type DeleteAllDependencies = {
-  listOwnedScanIds: (userId: number) => Promise<number[]>;
+  listOwnedScans: (userId: number) => Promise<OwnedScan[]>;
+  deleteStoredArtifact: (storageKey: string) => Promise<void>;
   deleteArtifactMetadata: (scanRecordId: number) => Promise<void>;
-  deleteAllScanMetadata: (userId: number) => Promise<void>;
+  deleteScanMetadata: (scanRecordId: number) => Promise<void>;
 };
+
+function assertOwnedStorageKey(userId: number, storageKey: string) {
+  if (!storageKey.startsWith(`neuroinsight/${userId}/`)) {
+    throw new Error("Artifact storage key is outside the authenticated user scope.");
+  }
+}
+
+async function deletePhysicalArtifacts(userId: number, artifacts: OwnedArtifact[], deleteStoredArtifact: (storageKey: string) => Promise<void>) {
+  for (const artifact of artifacts) {
+    if (artifact.storageKey.startsWith("pending:")) continue;
+    assertOwnedStorageKey(userId, artifact.storageKey);
+    await deleteStoredArtifact(artifact.storageKey);
+  }
+}
 
 /**
  * Issues a new signed URL only after the caller's ownership-scoped lookup succeeds.
@@ -28,13 +45,13 @@ export async function issueOwnedArtifactDownload(
 ) {
   const artifact = await dependencies.findOwnedArtifact(userId, artifactId);
   if (!artifact) throw new Error("Artifact was not found for this user.");
+  if (artifact.storageKey.startsWith("pending:")) throw new Error("Artifact upload is incomplete. Please retry saving the result.");
   return { ...artifact, storageUrl: await dependencies.createSignedUrl(artifact.storageKey) };
 }
 
 /**
- * Removes the owning user's artifact and scan metadata. The platform storage layer deliberately
- * exposes no object-delete API; without a key or database reference, the derived object is no
- * longer reachable through the application. Raw MRI uploads are never stored by this workflow.
+ * Physically removes the owning user's derived objects before deleting their metadata.
+ * A storage failure leaves metadata intact so deletion can be retried safely.
  */
 export async function deleteOwnedScan(
   userId: number,
@@ -43,15 +60,19 @@ export async function deleteOwnedScan(
 ) {
   const record = await dependencies.findOwnedScan(userId, scanId);
   if (!record) return { deleted: false };
+  await deletePhysicalArtifacts(userId, record.artifacts, dependencies.deleteStoredArtifact);
   await dependencies.deleteArtifactMetadata(record.id);
   await dependencies.deleteScanMetadata(record.id);
   return { deleted: true };
 }
 
-/** Removes metadata only for records owned by the authenticated user. */
+/** Physically removes each owned scan's artifacts before its metadata. */
 export async function deleteAllOwnedScans(userId: number, dependencies: DeleteAllDependencies) {
-  const recordIds = await dependencies.listOwnedScanIds(userId);
-  for (const recordId of recordIds) await dependencies.deleteArtifactMetadata(recordId);
-  await dependencies.deleteAllScanMetadata(userId);
-  return { deletedCount: recordIds.length };
+  const records = await dependencies.listOwnedScans(userId);
+  for (const record of records) {
+    await deletePhysicalArtifacts(userId, record.artifacts, dependencies.deleteStoredArtifact);
+    await dependencies.deleteArtifactMetadata(record.id);
+    await dependencies.deleteScanMetadata(record.id);
+  }
+  return { deletedCount: records.length };
 }
