@@ -8,6 +8,7 @@ import { csrfSameOriginGuard } from "./csrf";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { applyHttpSecurityHeaders, HEADERS_TIMEOUT_MS, KEEP_ALIVE_TIMEOUT_MS, MAX_TRPC_BODY_SIZE, REQUEST_TIMEOUT_MS } from "./httpSecurity";
+import { configuredPort, selectServerPort, startupFailureEvent } from "./serverRuntime";
 import { serveStatic, setupVite } from "./vite";
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -18,15 +19,6 @@ function isPortAvailable(port: number): Promise<boolean> {
     });
     server.on("error", () => resolve(false));
   });
-}
-
-async function findAvailablePort(startPort: number = 3000): Promise<number> {
-  for (let port = startPort; port < startPort + 20; port++) {
-    if (await isPortAvailable(port)) {
-      return port;
-    }
-  }
-  throw new Error(`No available port found starting from ${startPort}`);
 }
 
 async function startServer() {
@@ -58,8 +50,9 @@ async function startServer() {
     serveStatic(app);
   }
 
-  const preferredPort = parseInt(process.env.PORT || "3000");
-  const port = await findAvailablePort(preferredPort);
+  const production = process.env.NODE_ENV === "production";
+  const preferredPort = configuredPort(process.env.PORT);
+  const port = await selectServerPort(preferredPort, production, isPortAvailable);
   server.requestTimeout = REQUEST_TIMEOUT_MS;
   server.headersTimeout = HEADERS_TIMEOUT_MS;
   server.keepAliveTimeout = KEEP_ALIVE_TIMEOUT_MS;
@@ -68,9 +61,15 @@ async function startServer() {
     console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
   }
 
-  server.listen(port, () => {
-    console.log(`Server running on http://localhost:${port}/`);
+  await new Promise<void>((resolve, reject) => {
+    const onError = (error: Error) => reject(error);
+    server.once("error", onError);
+    server.listen(port, () => {
+      server.off("error", onError);
+      resolve();
+    });
   });
+  console.log(`Server running on http://localhost:${port}/`);
 
   const shutdown = (signal: string) => {
     console.log(`Received ${signal}; closing HTTP server.`);
@@ -81,4 +80,7 @@ async function startServer() {
   process.once("SIGINT", () => shutdown("SIGINT"));
 }
 
-startServer().catch(console.error);
+startServer().catch(error => {
+  console.error(startupFailureEvent(error));
+  process.exitCode = 1;
+});
