@@ -4,6 +4,25 @@
 
 import { ENV } from "./_core/env";
 
+const PROVIDER_CONTROL_TIMEOUT_MS = 10_000;
+const OBJECT_UPLOAD_TIMEOUT_MS = 30_000;
+
+function requireHttpsProviderUrl(value: unknown, purpose: string): string {
+  if (typeof value !== "string" || !value) {
+    throw new Error(`${purpose} returned an invalid URL`);
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`${purpose} returned an invalid URL`);
+  }
+  if (parsed.protocol !== "https:" || parsed.username || parsed.password) {
+    throw new Error(`${purpose} returned an invalid URL`);
+  }
+  return parsed.toString();
+}
+
 function getForgeConfig() {
   const forgeUrl = ENV.forgeApiUrl;
   const forgeKey = ENV.forgeApiKey;
@@ -45,14 +64,15 @@ async function storagePutAtResolvedKey(
 
   const presignResp = await fetch(presignUrl, {
     headers: { Authorization: `Bearer ${forgeKey}` },
+    signal: AbortSignal.timeout(PROVIDER_CONTROL_TIMEOUT_MS),
   });
 
   if (!presignResp.ok) {
     throw new Error(`Storage presign failed (${presignResp.status})`);
   }
 
-  const { url: s3Url } = (await presignResp.json()) as { url: string };
-  if (!s3Url) throw new Error("Forge returned empty presign URL");
+  const presignPayload = (await presignResp.json()) as { url?: unknown };
+  const s3Url = requireHttpsProviderUrl(presignPayload?.url, "Storage presign service");
 
   const blob =
     typeof data === "string"
@@ -63,6 +83,7 @@ async function storagePutAtResolvedKey(
     method: "PUT",
     headers: { "Content-Type": contentType },
     body: blob,
+    signal: AbortSignal.timeout(OBJECT_UPLOAD_TIMEOUT_MS),
   });
 
   if (!uploadResp.ok) {
@@ -104,15 +125,15 @@ export async function storageGetSignedUrl(relKey: string): Promise<string> {
 
   const resp = await fetch(getUrl, {
     headers: { Authorization: `Bearer ${forgeKey}` },
+    signal: AbortSignal.timeout(PROVIDER_CONTROL_TIMEOUT_MS),
   });
 
   if (!resp.ok) {
-    const msg = await resp.text().catch(() => resp.statusText);
-    throw new Error(`Storage signed URL failed (${resp.status}): ${msg}`);
+    throw new Error(`Storage signed URL failed (${resp.status})`);
   }
 
-  const { url } = (await resp.json()) as { url: string };
-  return url;
+  const payload = (await resp.json()) as { url?: unknown };
+  return requireHttpsProviderUrl(payload?.url, "Storage download service");
 }
 
 /** Physically removes a derived object; missing objects are treated as deleted. */
@@ -124,6 +145,7 @@ export async function storageDelete(relKey: string): Promise<void> {
   const response = await fetch(deleteUrl, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${forgeKey}` },
+    signal: AbortSignal.timeout(PROVIDER_CONTROL_TIMEOUT_MS),
   });
   if (!response.ok && response.status !== 404) {
     throw new Error(`Storage deletion failed (${response.status})`);

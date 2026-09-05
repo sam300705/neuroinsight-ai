@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ENV } from "./_core/env";
-import { storageDelete, storagePutStable } from "./storage";
+import { storageDelete, storageGetSignedUrl, storagePutStable } from "./storage";
 
 const originalForgeUrl = ENV.forgeApiUrl;
 const originalForgeKey = ENV.forgeApiKey;
@@ -40,5 +40,70 @@ describe("managed storage lifecycle", () => {
     expect(stored.key).toBe("neuroinsight/7/scan/report.pdf");
     expect(String(fetchMock.mock.calls[0][0])).toBe("https://forge.example/v1/storage/presign/put?path=neuroinsight%2F7%2Fscan%2Freport.pdf");
     expect(fetchMock.mock.calls[1][0]).toBe("https://object.example/upload");
+  });
+
+  it.each([
+    "http://object.example/upload",
+    "javascript:alert(1)",
+    "https://user:password@object.example/upload",
+  ])("rejects an unsafe upload URL returned by the provider: %s", async url => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ url }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      storagePutStable("neuroinsight/7/scan/report.pdf", Buffer.from("%PDF"), "application/pdf"),
+    ).rejects.toThrow("Storage presign service returned an invalid URL");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns only a validated HTTPS download URL", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ url: "https://object.example/report.pdf?signature=value" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    );
+
+    await expect(storageGetSignedUrl("neuroinsight/7/scan/report.pdf")).resolves.toBe(
+      "https://object.example/report.pdf?signature=value",
+    );
+  });
+
+  it("does not expose an upstream error body when download signing fails", async () => {
+    const privateDetail = "private provider detail or signed material";
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(privateDetail, { status: 503 })));
+
+    const failure = storageGetSignedUrl("neuroinsight/7/scan/report.pdf");
+    await expect(failure).rejects.toThrow("Storage signed URL failed (503)");
+    await expect(failure).rejects.not.toThrow(privateDetail);
+  });
+
+  it.each([
+    { url: "http://object.example/report.pdf" },
+    { url: "https://user:password@object.example/report.pdf" },
+    { url: 42 },
+    {},
+  ])("rejects an invalid download URL response: %j", async payload => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(payload), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    );
+
+    await expect(storageGetSignedUrl("neuroinsight/7/scan/report.pdf")).rejects.toThrow(
+      "Storage download service returned an invalid URL",
+    );
   });
 });
