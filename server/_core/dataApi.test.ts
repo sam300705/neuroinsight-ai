@@ -1,0 +1,51 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ENV } from "./env";
+import { callDataApi } from "./dataApi";
+
+const originalForgeUrl = ENV.forgeApiUrl;
+const originalForgeKey = ENV.forgeApiKey;
+
+describe("Data API boundary", () => {
+  beforeEach(() => {
+    ENV.forgeApiUrl = "https://forge.example";
+    ENV.forgeApiKey = "test-only-key";
+  });
+
+  afterEach(() => {
+    ENV.forgeApiUrl = originalForgeUrl;
+    ENV.forgeApiKey = originalForgeKey;
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("passes an abort signal and returns a validated jsonData result", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ jsonData: JSON.stringify({ ok: true }) }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(callDataApi("test-api")).resolves.toEqual({ ok: true });
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ signal: expect.any(AbortSignal) });
+  });
+
+  it("rejects malformed JSON, wrong shapes, and malformed jsonData safely", async () => {
+    for (const body of ["not-json", JSON.stringify([]), JSON.stringify({ jsonData: 42 }), JSON.stringify({ jsonData: "not-json" })]) {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body, { status: 200 })));
+      await expect(callDataApi("test-api")).rejects.toThrow("Data API returned an invalid response");
+    }
+  });
+
+  it("rejects oversized responses without exposing their contents", async () => {
+    const privateDetail = "provider-token=private";
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ privateDetail }) + "x".repeat(1_048_576), { status: 200 })));
+    await expect(callDataApi("test-api")).rejects.toThrow("Data API returned an invalid response");
+    await expect(callDataApi("test-api")).rejects.not.toThrow(privateDetail);
+  });
+
+  it("maps non-2xx and timeout failures to safe errors", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("private body", { status: 503, statusText: "secret" })));
+    await expect(callDataApi("test-api")).rejects.toThrow("Data API request failed (503)");
+    await expect(callDataApi("test-api")).rejects.not.toThrow("private body");
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new DOMException("timed out", "AbortError")));
+    await expect(callDataApi("test-api")).rejects.toThrow("Data API request failed");
+  });
+});
