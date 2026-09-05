@@ -1,4 +1,9 @@
-import { AXIOS_TIMEOUT_MS, COOKIE_NAME, SESSION_MAX_AGE_MS, decodeOAuthState } from "@shared/const";
+import {
+  AXIOS_TIMEOUT_MS,
+  COOKIE_NAME,
+  SESSION_MAX_AGE_MS,
+  decodeOAuthState,
+} from "@shared/const";
 import { ForbiddenError } from "@shared/_core/errors";
 import axios, { type AxiosInstance } from "axios";
 import { parse as parseCookieHeader } from "cookie";
@@ -8,6 +13,7 @@ import type { User } from "../../drizzle/schema";
 import * as db from "../db";
 import { sessionApplicationId, sessionSecretBytes } from "./authConfig";
 import { ENV } from "./env";
+import { safeErrorMetadata } from "./safeError";
 import type {
   ExchangeTokenRequest,
   ExchangeTokenResponse,
@@ -37,7 +43,6 @@ const GET_USER_INFO_WITH_JWT_PATH = `/webdev.v1.WebDevAuthPublicService/GetUserI
 
 class OAuthService {
   constructor(private client: ReturnType<typeof axios.create>) {
-    console.log("[OAuth] Initialized with baseURL:", ENV.oAuthServerUrl);
     if (!ENV.oAuthServerUrl) {
       console.error(
         "[OAuth] ERROR: OAUTH_SERVER_URL is not configured! Set OAUTH_SERVER_URL environment variable."
@@ -98,7 +103,7 @@ export class SDKServer {
       appId: ENV.appId,
       secret: ENV.cookieSecret,
       production: ENV.isProduction,
-    },
+    }
   ) {
     this.client = client;
     this.oauthService = new OAuthService(this.client);
@@ -168,7 +173,10 @@ export class SDKServer {
   }
 
   private getSessionSecret() {
-    return sessionSecretBytes(this.sessionConfiguration.secret, this.sessionConfiguration.production);
+    return sessionSecretBytes(
+      this.sessionConfiguration.secret,
+      this.sessionConfiguration.production
+    );
   }
 
   private getSessionAppId() {
@@ -200,7 +208,9 @@ export class SDKServer {
   ): Promise<string> {
     const expectedAppId = this.getSessionAppId();
     if (payload.appId !== expectedAppId) {
-      throw new Error("Session application identity does not match this dashboard.");
+      throw new Error(
+        "Session application identity does not match this dashboard."
+      );
     }
     const issuedAt = Date.now();
     const expiresInMs = options.expiresInMs ?? SESSION_MAX_AGE_MS;
@@ -249,7 +259,10 @@ export class SDKServer {
         name,
       };
     } catch (error) {
-      console.warn("[Auth] Session verification failed", { errorType: error instanceof Error ? error.name : "UnknownError" });
+      console.warn(
+        "[Auth] Session verification failed",
+        safeErrorMetadata(error)
+      );
       return null;
     }
   }
@@ -325,7 +338,10 @@ export class SDKServer {
         });
         user = await db.getUserByOpenId(userInfo.openId);
       } catch (error) {
-        console.error("[Auth] Failed to sync user from OAuth", { errorType: error instanceof Error ? error.name : "UnknownError" });
+        console.error(
+          "[Auth] Failed to sync user from OAuth",
+          safeErrorMetadata(error)
+        );
         throw ForbiddenError("Failed to sync user info");
       }
     }
