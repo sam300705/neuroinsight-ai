@@ -1,4 +1,4 @@
-import { decimal, index, int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { decimal, index, int, mysqlEnum, mysqlTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
 
 /** Core user table backing the preconfigured OAuth flow. */
 export const users = mysqlTable("users", {
@@ -19,8 +19,8 @@ export type InsertUser = typeof users.$inferInsert;
 /** Stores analysis metadata only. Raw MRI pixels are never stored in this table. */
 export const scanRecords = mysqlTable("scan_records", {
   id: int("id").autoincrement().primaryKey(),
-  scanId: varchar("scanId", { length: 64 }).notNull().unique(),
-  userId: int("userId").notNull(),
+  scanId: varchar("scanId", { length: 64 }).notNull(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   mode: mysqlEnum("mode", ["classification", "segmentation"]).notNull(),
   status: mysqlEnum("status", ["complete", "low_confidence", "incompatible", "partial", "unavailable"]).notNull(),
   modelVersion: varchar("modelVersion", { length: 128 }).notNull(),
@@ -33,18 +33,27 @@ export const scanRecords = mysqlTable("scan_records", {
   measurementJson: text("measurementJson").notNull(),
   warningsJson: text("warningsJson").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, table => [index("scan_records_user_created_idx").on(table.userId, table.createdAt), index("scan_records_user_status_idx").on(table.userId, table.status)]);
+}, table => [
+  uniqueIndex("scan_records_user_scan_unique").on(table.userId, table.scanId),
+  index("scan_records_user_id_idx").on(table.userId, table.id),
+  index("scan_records_user_created_idx").on(table.userId, table.createdAt),
+  index("scan_records_user_status_idx").on(table.userId, table.status),
+]);
 
 /** Stores only returned S3 key/URL and MIME type for durable derived artifacts. */
 export const scanArtifacts = mysqlTable("scan_artifacts", {
   id: int("id").autoincrement().primaryKey(),
-  scanRecordId: int("scanRecordId").notNull(),
+  scanRecordId: int("scanRecordId").notNull().references(() => scanRecords.id, { onDelete: "cascade" }),
   artifactType: mysqlEnum("artifactType", ["report", "grad_cam", "segmentation_mask", "three_dimensional"]).notNull(),
   storageKey: varchar("storageKey", { length: 512 }).notNull(),
   storageUrl: varchar("storageUrl", { length: 1024 }).notNull(),
   contentType: varchar("contentType", { length: 128 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, table => [index("scan_artifacts_scan_idx").on(table.scanRecordId), index("scan_artifacts_type_idx").on(table.artifactType)]);
+}, table => [
+  uniqueIndex("scan_artifacts_record_type_unique").on(table.scanRecordId, table.artifactType),
+  index("scan_artifacts_scan_idx").on(table.scanRecordId),
+  index("scan_artifacts_type_idx").on(table.artifactType),
+]);
 
 export type ScanRecord = typeof scanRecords.$inferSelect;
 export type InsertScanRecord = typeof scanRecords.$inferInsert;

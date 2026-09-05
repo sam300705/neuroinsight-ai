@@ -34,6 +34,8 @@ describe("dashboard bilingual page copy", () => {
       expect(results.saveTitle).not.toHaveLength(0);
       expect(results.saveDetail).not.toHaveLength(0);
       expect(results.signInSave).not.toHaveLength(0);
+      expect(results.reportUnavailableTitle).not.toHaveLength(0);
+      expect(results.reportUnavailableDetail).not.toHaveLength(0);
     }
     expect(copyFor("hi").results.saveTitle).toContain("आर्टिफैक्ट");
   });
@@ -44,5 +46,19 @@ describe("dashboard bilingual page copy", () => {
     expect(copyFor("en").performance.intro).toContain("EXP-005");
     expect(copyFor("hi").home.modelTitle).toContain("मोड A");
     expect(copyFor("hi").performance.intro).toContain("EXP-005");
+  });
+
+  it("describes History as account-scoped Mode A metadata with fresh ownership-checked downloads", () => {
+    const english = copyFor("en").history;
+    const hindi = copyFor("hi").history;
+    expect(english.title).toContain("Account-linked");
+    expect(english.intro).toContain("account-scoped");
+    expect(english.emptyDetail).toContain("fresh ownership-checked download");
+    expect(english.emptyDetail).toContain("Mode B masks and 3D artifacts are unavailable");
+    expect(english.emptyDetail).not.toContain("durable links");
+    expect(hindi.title).toContain("खाता-लिंक्ड");
+    expect(hindi.emptyDetail).toContain("मोड B मास्क");
+    expect(hindi.previous).not.toHaveLength(0);
+    expect(hindi.next).not.toHaveLength(0);
   });
 });

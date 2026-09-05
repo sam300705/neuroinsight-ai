@@ -4,9 +4,13 @@ import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
-import { registerStorageProxy } from "./storageProxy";
+import { csrfSameOriginGuard } from "./csrf";
+import { sessionApplicationId, sessionSecretBytes } from "./authConfig";
+import { ENV } from "./env";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
+import { applyHttpSecurityHeaders, HEADERS_TIMEOUT_MS, KEEP_ALIVE_TIMEOUT_MS, MAX_TRPC_BODY_SIZE, REQUEST_TIMEOUT_MS } from "./httpSecurity";
+import { configuredPort, selectServerPort, startupFailureEvent } from "./serverRuntime";
 import { serveStatic, setupVite } from "./vite";
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -19,23 +23,26 @@ function isPortAvailable(port: number): Promise<boolean> {
   });
 }
 
-async function findAvailablePort(startPort: number = 3000): Promise<number> {
-  for (let port = startPort; port < startPort + 20; port++) {
-    if (await isPortAvailable(port)) {
-      return port;
-    }
-  }
-  throw new Error(`No available port found starting from ${startPort}`);
-}
-
 async function startServer() {
+  const production = process.env.NODE_ENV === "production";
+  if (production) {
+    sessionApplicationId(ENV.appId);
+    sessionSecretBytes(ENV.cookieSecret, true);
+  }
+
   const app = express();
   const server = createServer(app);
-  // Configure body parser with larger size limit for file uploads
-  app.use(express.json({ limit: "50mb" }));
-  app.use(express.urlencoded({ limit: "50mb", extended: true }));
-  registerStorageProxy(app);
+  app.disable("x-powered-by");
+  app.use((_request, response, next) => {
+    applyHttpSecurityHeaders(response, process.env.NODE_ENV === "production");
+    next();
+  });
+  // Original MRI bytes do not traverse this server. The bounded allowance supports only
+  // consented derived PDF/Grad-CAM artifacts, whose server-side validator caps decoded bytes.
+  app.use(express.json({ limit: MAX_TRPC_BODY_SIZE }));
+  app.use(express.urlencoded({ limit: MAX_TRPC_BODY_SIZE, extended: true }));
   registerOAuthRoutes(app);
+  app.use("/api/trpc", csrfSameOriginGuard);
   // tRPC API
   app.use(
     "/api/trpc",
@@ -51,16 +58,36 @@ async function startServer() {
     serveStatic(app);
   }
 
-  const preferredPort = parseInt(process.env.PORT || "3000");
-  const port = await findAvailablePort(preferredPort);
+  const preferredPort = configuredPort(process.env.PORT);
+  const port = await selectServerPort(preferredPort, production, isPortAvailable);
+  server.requestTimeout = REQUEST_TIMEOUT_MS;
+  server.headersTimeout = HEADERS_TIMEOUT_MS;
+  server.keepAliveTimeout = KEEP_ALIVE_TIMEOUT_MS;
 
   if (port !== preferredPort) {
     console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
   }
 
-  server.listen(port, () => {
-    console.log(`Server running on http://localhost:${port}/`);
+  await new Promise<void>((resolve, reject) => {
+    const onError = (error: Error) => reject(error);
+    server.once("error", onError);
+    server.listen(port, () => {
+      server.off("error", onError);
+      resolve();
+    });
   });
+  console.log(`Server running on http://localhost:${port}/`);
+
+  const shutdown = (signal: string) => {
+    console.log(`Received ${signal}; closing HTTP server.`);
+    server.close(error => process.exit(error ? 1 : 0));
+    setTimeout(() => process.exit(1), REQUEST_TIMEOUT_MS).unref();
+  };
+  process.once("SIGTERM", () => shutdown("SIGTERM"));
+  process.once("SIGINT", () => shutdown("SIGINT"));
 }
 
-startServer().catch(console.error);
+startServer().catch(error => {
+  console.error(startupFailureEvent(error));
+  process.exitCode = 1;
+});

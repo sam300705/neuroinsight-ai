@@ -2,10 +2,10 @@ import AxeBuilder from "@axe-core/playwright";
 import { chromium, expect } from "@playwright/test";
 
 const baseUrl = process.env.E2E_BASE_URL ?? "http://127.0.0.1:3000";
-const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ?? "/usr/bin/chromium";
+const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
 const routes = ["/", "/analyse", "/results", "/history", "/methodology", "/performance", "/limitations", "/about"];
 
-const browser = await chromium.launch({ headless: true, executablePath, args: ["--no-sandbox"] });
+const browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}), args: ["--no-sandbox"] });
 try {
   const context = await browser.newContext();
   for (const route of routes) {

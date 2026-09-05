@@ -6,6 +6,10 @@
 
 > **Required notice:** “This system is not a medical diagnosis and must not replace a qualified radiologist.”
 
+## Release distinction
+
+The managed public dashboard reflects the earlier owner-approved recovery checkpoint `409f8a70`; it has **not** received the current PR hardening pass. The Vercel inference project remains linked to GitHub: its production target is `main` at `26498b5`, while pull request previews are branch-specific and non-production. The branch-level verification totals recorded below apply to PR #1’s working tree and must not be described as an additional public dashboard publication.
+
 ## What is live
 
 Mode A is a real experimental 2D, four-class brain-MRI image classifier. It returns a predicted research class, a validation-calibrated **model confidence score**, a low-confidence/manual-review state, and a real final-layer Grad-CAM attribution. It can also produce a derived academic PDF report. The published dashboard was verified by submitting one lawful public fixed-split image through the browser; the test asserts safe rendering and deliberately does **not** assert that the model’s class is correct.
@@ -15,10 +19,10 @@ Mode A is a real experimental 2D, four-class brain-MRI image classifier. It retu
 | Public dashboard | Live | Research and education only |
 | HTTPS Mode A API | Live | Experimental image-level classification only |
 | Real inference and Grad-CAM | Verified | Grad-CAM is coarse attribution, not a tumor boundary |
-| PDF report | Verified | Derived research report, not a clinical report |
+| PDF report | Verified on the earlier public recovery release | Derived research report, not a clinical report. The current PR requires a server-issued receipt and production signing configuration before any future release can offer reports. |
 | CORS | Verified | Allows only the published origin and localhost development origins |
 | Mode B segmentation | Intentionally unavailable | No validated full-volume model is deployed |
-| Private history re-download | Implemented, not live-session tested | Requires a signed-in account and must never store original uploads |
+| Private history re-download | Verified with a signed-in test session | Ownership-gated signed report retrieval; original uploads are never stored |
 
 ## Evidence and evaluation limits
 
@@ -37,24 +41,37 @@ The authoritative data and model evidence are maintained in:
 
 ## Privacy and artifact handling
 
-The browser sends an uploaded image to the external research API only for the requested analysis. The application is designed **not** to store the original MRI upload. If a signed-in user explicitly saves a result, the application retains only anonymous result metadata and derived report or Grad-CAM artifacts. Artifact download lookup requires ownership of the associated history record and issues a fresh signed URL rather than exposing a durable storage path.
+The browser sends an uploaded image to the external research API only for the requested analysis. The application is designed **not** to store the original MRI upload. If a signed-in user explicitly saves a result, the application retains only account-linked pseudonymous result metadata and derived Mode A report or Grad-CAM artifacts. Artifact download lookup requires ownership of the associated history record and issues a fresh signed URL rather than exposing a durable storage path. Deleting a history record revokes application access to its artifact references; it is not a provider-side physical-erasure guarantee.
 
 No raw data, public test image, user credential, or secret is committed to Git.
 
-## Tested release state
+## Current PR verification state
+
+The public dashboard and production inference target remain on the earlier owner-approved release. The following totals apply only to PR #1 and its non-production Git previews until the owner separately approves merge and release.
 
 The final regression run passed all of the following:
 
 | Layer | Result |
 |---|---|
-| Web tests | 21 passing tests |
-| FastAPI tests | 12 passing tests |
-| ML/data tests | 4 passing tests |
+| Web tests | **48 passing tests** |
+| FastAPI tests | **100 passing tests** |
+| ML/data tests | 8 passing tests |
 | TypeScript check | Passed |
-| Production bundle | Passed; non-blocking JavaScript chunk-size warning recorded |
-| Browser checks | Corrupt upload, real Mode A inference, Hindi real inference, focused accessibility, cross-route WCAG 2 A/AA, and published-dashboard real inference all passed |
+| Coverage | Passed with selected TypeScript/Python critical-module thresholds |
+| Production bundle | Passed; initial bundle is 697,072 bytes under the 768,000-byte guard |
+| Dependency audits and SBOM | Production Node audit and locked Python audit passed; CI generates a CycloneDX SBOM and runs a credential-free backend container smoke test |
+| Browser checks | Corrupt-upload, focused accessibility, and cross-route WCAG 2 A/AA checks passed against a local production build. Historical live Mode A and signed-in artifact checks remain evidence for the earlier public release, not the current branch. |
 
 The backend accepted a CORS preflight from the public dashboard origin and rejected an unrelated origin without an allow-origin header.
+
+## PR #1 report-receipt release consequence
+
+PR #1 treats report integrity as a user-visible release decision. If this PR reaches a production target without `ANALYSIS_RECEIPT_SECRET`, Mode A classification remains expected to work when its model configuration is intact, but no report receipt is issued and `/api/v1/report` returns `503`. The Results page now makes that absence explicit: it offers neither a PDF nor a derived-artifact save action and does not retry or manufacture a download.
+
+There are exactly two valid owner choices before any production promotion:
+
+1. **Preserve PDF reports.** Provision a strong server-only `ANALYSIS_RECEIPT_SECRET` outside Git, browser code, and logs; verify a controlled non-production classify → receipt → report flow, replay behavior within its documented process-local scope, and Grad-CAM digest binding; then decide separately whether to release.
+2. **Intentionally disable reports.** Release without that secret only after retaining the explicit unavailable report state and updating all relevant product copy so users are not told that PDF reports are available.
 
 ## Operational safeguards
 
@@ -66,7 +83,6 @@ When redeploying the Vercel backend, update both the dashboard inference base UR
 
 The following tasks are intentionally not presented as completed:
 
-1. Sign in through the secure dashboard flow and verify a saved Mode A result appears in History and downloads through its signed URL.
-2. Build and validate a genuinely full-volume, glioma-focused Mode B segmentation route before exposing masks, physical measurement, volume, or 3D geometry as real output.
+1. Build and validate a genuinely full-volume, glioma-focused Mode B segmentation route before exposing masks, physical measurement, volume, or 3D geometry as real output.
 
-Both gates exist to preserve privacy and avoid fabricating unvalidated medical-imaging behavior.
+The Mode B gate exists to avoid fabricating unvalidated medical-imaging behavior. The signed-in Mode A check used a lawful public demonstration image, saved only derived metadata/PDF/Grad-CAM artifacts, verified ownership-gated report retrieval through a fresh signed URL, and then removed the temporary record.

@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -6,9 +6,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY pyproject.toml ./
+COPY pyproject.toml requirements.lock ./
 COPY neuroinsight_api ./neuroinsight_api
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir -r requirements.lock && pip install --no-cache-dir --no-deps .
 
 EXPOSE 8000
 

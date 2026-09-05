@@ -1,6 +1,12 @@
 import { z } from "zod";
 
-export const artifactTypeSchema = z.enum(["report", "grad_cam", "segmentation_mask", "three_dimensional"]);
+/**
+ * Only deployed Mode A derived artifacts may enter protected history.
+ * Mode B remains unavailable until a full-volume model has passed its separate
+ * release gate, so clients cannot manufacture segmentation or 3D artifacts by
+ * calling the authenticated API directly.
+ */
+export const artifactTypeSchema = z.enum(["report", "grad_cam"]);
 export const measurementSchema = z.object({
   kind: z.enum(["unavailable", "relative_area", "physical_area", "physical_volume"]),
   pixelCount: z.number().int().nonnegative().optional(),
@@ -14,7 +20,7 @@ export const measurementSchema = z.object({
 
 export const scanResultSchema = z.object({
   scanId: z.string().uuid(),
-  mode: z.enum(["classification", "segmentation"]),
+  mode: z.literal("classification"),
   status: z.enum(["complete", "low_confidence", "incompatible", "partial", "unavailable"]),
   modelVersion: z.string().min(1).max(128),
   processingTimeMs: z.number().int().nonnegative().max(30 * 60 * 1000),
@@ -27,16 +33,23 @@ export const scanResultSchema = z.object({
   warnings: z.array(z.string().max(1000)).max(20),
 });
 
-export const artifactRegistrationSchema = z.object({
+const artifactRegistrationBaseSchema = z.object({
   scanId: z.string().uuid(),
-  artifactType: artifactTypeSchema,
-  contentType: z.enum(["application/pdf", "image/png", "application/json", "model/gltf-binary"]),
   fileName: z.string().regex(/^[a-zA-Z0-9._-]{1,120}$/),
   /** Derived report/overlay/mask bytes only. Raw MRI uploads never use this procedure. */
   base64: z.string().min(1).max(20_000_000),
 });
 
-export function validateArtifactPayload(base64: string, contentType: string) {
+/**
+ * Enforce the deployed Mode A artifact contract at the boundary. In particular,
+ * no generic JSON, mask, or 3D MIME type can be registered through this API.
+ */
+export const artifactRegistrationSchema = z.discriminatedUnion("artifactType", [
+  artifactRegistrationBaseSchema.extend({ artifactType: z.literal("report"), contentType: z.literal("application/pdf") }),
+  artifactRegistrationBaseSchema.extend({ artifactType: z.literal("grad_cam"), contentType: z.literal("image/png") }),
+]);
+
+export function validateArtifactPayload(base64: string, contentType: "application/pdf" | "image/png") {
   const bytes = Buffer.from(base64, "base64");
   if (!bytes.length || bytes.length > 10 * 1024 * 1024) throw new Error("Derived artifact must be between 1 byte and 10 MB.");
   const signature = bytes.subarray(0, 8).toString("hex");
@@ -44,4 +57,3 @@ export function validateArtifactPayload(base64: string, contentType: string) {
   if (contentType === "image/png" && signature !== "89504e470d0a1a0a") throw new Error("Image payload is not a valid PNG header.");
   return bytes;
 }
-

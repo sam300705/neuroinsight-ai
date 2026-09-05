@@ -1,4 +1,9 @@
-import { AXIOS_TIMEOUT_MS, COOKIE_NAME, ONE_YEAR_MS, decodeOAuthState } from "@shared/const";
+import {
+  AXIOS_TIMEOUT_MS,
+  COOKIE_NAME,
+  SESSION_MAX_AGE_MS,
+  decodeOAuthState,
+} from "@shared/const";
 import { ForbiddenError } from "@shared/_core/errors";
 import axios, { type AxiosInstance } from "axios";
 import { parse as parseCookieHeader } from "cookie";
@@ -6,7 +11,9 @@ import type { Request } from "express";
 import { SignJWT, jwtVerify } from "jose";
 import type { User } from "../../drizzle/schema";
 import * as db from "../db";
+import { sessionApplicationId, sessionSecretBytes } from "./authConfig";
 import { ENV } from "./env";
+import { safeErrorMetadata } from "./safeError";
 import type {
   ExchangeTokenRequest,
   ExchangeTokenResponse,
@@ -24,13 +31,18 @@ export type SessionPayload = {
   name: string;
 };
 
+type SessionConfiguration = {
+  appId: string;
+  secret: string;
+  production: boolean;
+};
+
 const EXCHANGE_TOKEN_PATH = `/webdev.v1.WebDevAuthPublicService/ExchangeToken`;
 const GET_USER_INFO_PATH = `/webdev.v1.WebDevAuthPublicService/GetUserInfo`;
 const GET_USER_INFO_WITH_JWT_PATH = `/webdev.v1.WebDevAuthPublicService/GetUserInfoWithJwt`;
 
 class OAuthService {
   constructor(private client: ReturnType<typeof axios.create>) {
-    console.log("[OAuth] Initialized with baseURL:", ENV.oAuthServerUrl);
     if (!ENV.oAuthServerUrl) {
       console.error(
         "[OAuth] ERROR: OAUTH_SERVER_URL is not configured! Set OAUTH_SERVER_URL environment variable."
@@ -81,11 +93,18 @@ const createOAuthHttpClient = (): AxiosInstance =>
     timeout: AXIOS_TIMEOUT_MS,
   });
 
-class SDKServer {
+export class SDKServer {
   private readonly client: AxiosInstance;
   private readonly oauthService: OAuthService;
 
-  constructor(client: AxiosInstance = createOAuthHttpClient()) {
+  constructor(
+    client: AxiosInstance = createOAuthHttpClient(),
+    private readonly sessionConfiguration: SessionConfiguration = {
+      appId: ENV.appId,
+      secret: ENV.cookieSecret,
+      production: ENV.isProduction,
+    }
+  ) {
     this.client = client;
     this.oauthService = new OAuthService(this.client);
   }
@@ -154,8 +173,14 @@ class SDKServer {
   }
 
   private getSessionSecret() {
-    const secret = ENV.cookieSecret;
-    return new TextEncoder().encode(secret);
+    return sessionSecretBytes(
+      this.sessionConfiguration.secret,
+      this.sessionConfiguration.production
+    );
+  }
+
+  private getSessionAppId() {
+    return sessionApplicationId(this.sessionConfiguration.appId);
   }
 
   /**
@@ -170,7 +195,7 @@ class SDKServer {
     return this.signSession(
       {
         openId,
-        appId: ENV.appId,
+        appId: this.getSessionAppId(),
         name: options.name || "",
       },
       options
@@ -181,8 +206,14 @@ class SDKServer {
     payload: SessionPayload,
     options: { expiresInMs?: number } = {}
   ): Promise<string> {
+    const expectedAppId = this.getSessionAppId();
+    if (payload.appId !== expectedAppId) {
+      throw new Error(
+        "Session application identity does not match this dashboard."
+      );
+    }
     const issuedAt = Date.now();
-    const expiresInMs = options.expiresInMs ?? ONE_YEAR_MS;
+    const expiresInMs = options.expiresInMs ?? SESSION_MAX_AGE_MS;
     const expirationSeconds = Math.floor((issuedAt + expiresInMs) / 1000);
     const secretKey = this.getSessionSecret();
 
@@ -206,6 +237,7 @@ class SDKServer {
 
     try {
       const secretKey = this.getSessionSecret();
+      const expectedAppId = this.getSessionAppId();
       const { payload } = await jwtVerify(cookieValue, secretKey, {
         algorithms: ["HS256"],
       });
@@ -214,7 +246,8 @@ class SDKServer {
       if (
         !isNonEmptyString(openId) ||
         !isNonEmptyString(appId) ||
-        !isNonEmptyString(name)
+        !isNonEmptyString(name) ||
+        appId !== expectedAppId
       ) {
         console.warn("[Auth] Session payload missing required fields");
         return null;
@@ -226,7 +259,10 @@ class SDKServer {
         name,
       };
     } catch (error) {
-      console.warn("[Auth] Session verification failed", String(error));
+      console.warn(
+        "[Auth] Session verification failed",
+        safeErrorMetadata(error)
+      );
       return null;
     }
   }
@@ -302,7 +338,10 @@ class SDKServer {
         });
         user = await db.getUserByOpenId(userInfo.openId);
       } catch (error) {
-        console.error("[Auth] Failed to sync user from OAuth:", error);
+        console.error(
+          "[Auth] Failed to sync user from OAuth",
+          safeErrorMetadata(error)
+        );
         throw ForbiddenError("Failed to sync user info");
       }
     }
@@ -310,11 +349,6 @@ class SDKServer {
     if (!user) {
       throw ForbiddenError("User not found");
     }
-
-    await db.upsertUser({
-      openId: user.openId,
-      lastSignedIn: signedInAt,
-    });
 
     return user;
   }

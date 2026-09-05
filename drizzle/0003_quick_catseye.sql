@@ -1,0 +1,1 @@
+CREATE INDEX `scan_records_user_id_idx` ON `scan_records` (`userId`,`id`);

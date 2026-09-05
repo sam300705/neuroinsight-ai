@@ -4,8 +4,8 @@ import { Link, useLocation } from "wouter";
 import { AcademicDisclaimer } from "./ResearchDisclaimers";
 import { useLanguage } from "@/contexts/LanguageContext";
 
-type NavItem = { href: string; key: "home" | "analyze" | "results" | "history" | "methodology" | "performance" | "limitations" | "about" };
-const navigation: NavItem[] = [{ href: "/", key: "home" }, { href: "/analyse", key: "analyze" }, { href: "/results", key: "results" }, { href: "/history", key: "history" }, { href: "/methodology", key: "methodology" }, { href: "/performance", key: "performance" }, { href: "/limitations", key: "limitations" }, { href: "/about", key: "about" }];
+type NavItem = { href: string; key: "home" | "analyze" | "results" | "history" | "methodology" | "performance" | "limitations" | "responsible" | "about" };
+const navigation: NavItem[] = [{ href: "/", key: "home" }, { href: "/analyse", key: "analyze" }, { href: "/results", key: "results" }, { href: "/history", key: "history" }, { href: "/methodology", key: "methodology" }, { href: "/performance", key: "performance" }, { href: "/limitations", key: "limitations" }, { href: "/responsible-use", key: "responsible" }, { href: "/about", key: "about" }];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [location] = useLocation(); const [open, setOpen] = useState(false); const { language, setLanguage, t } = useLanguage(); const active = navigation.find(item => item.href === location) ?? navigation[0];
