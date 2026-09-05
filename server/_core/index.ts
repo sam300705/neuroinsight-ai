@@ -5,7 +5,7 @@ import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { csrfSameOriginGuard } from "./csrf";
-import { sessionSecretBytes } from "./authConfig";
+import { sessionApplicationId, sessionSecretBytes } from "./authConfig";
 import { ENV } from "./env";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
@@ -25,7 +25,10 @@ function isPortAvailable(port: number): Promise<boolean> {
 
 async function startServer() {
   const production = process.env.NODE_ENV === "production";
-  if (production) sessionSecretBytes(ENV.cookieSecret, true);
+  if (production) {
+    sessionApplicationId(ENV.appId);
+    sessionSecretBytes(ENV.cookieSecret, true);
+  }
 
   const app = express();
   const server = createServer(app);

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { MINIMUM_PRODUCTION_SESSION_SECRET_BYTES, sessionSecretBytes } from "./authConfig";
+import {
+  MINIMUM_PRODUCTION_SESSION_SECRET_BYTES,
+  sessionApplicationId,
+  sessionSecretBytes,
+} from "./authConfig";
 
 describe("session signing configuration", () => {
   it.each([undefined, "", "   "])("rejects an absent session secret: %j", value => {
@@ -17,5 +21,13 @@ describe("session signing configuration", () => {
 
   it("allows an explicitly configured development-only secret without applying the production minimum", () => {
     expect(new TextDecoder().decode(sessionSecretBytes("local-only", false))).toBe("local-only");
+  });
+
+  it.each([undefined, "", "   "])("rejects an absent application identity: %j", value => {
+    expect(() => sessionApplicationId(value)).toThrow("VITE_APP_ID must be configured");
+  });
+
+  it("preserves the configured application identity", () => {
+    expect(sessionApplicationId("neuroinsight-dashboard")).toBe("neuroinsight-dashboard");
   });
 });

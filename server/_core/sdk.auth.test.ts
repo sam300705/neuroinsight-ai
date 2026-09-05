@@ -30,3 +30,38 @@ describe("authenticated request persistence", () => {
     expect(upsert).not.toHaveBeenCalled();
   });
 });
+
+describe("session application binding", () => {
+  const secret = "s".repeat(32);
+
+  function service(appId: string) {
+    return new SDKServer({ post: vi.fn() } as never, { appId, secret, production: true });
+  }
+
+  it("round-trips a session issued for the configured application", async () => {
+    const dashboard = service("neuroinsight-dashboard");
+    const token = await dashboard.createSessionToken("user-1", { name: "User" });
+
+    await expect(dashboard.verifySession(token)).resolves.toEqual({
+      openId: "user-1",
+      appId: "neuroinsight-dashboard",
+      name: "User",
+    });
+  });
+
+  it("rejects a validly signed session issued for another application", async () => {
+    const issuer = service("other-dashboard");
+    const verifier = service("neuroinsight-dashboard");
+    const token = await issuer.createSessionToken("user-1", { name: "User" });
+
+    await expect(verifier.verifySession(token)).resolves.toBeNull();
+  });
+
+  it("refuses to sign a caller-supplied payload for another application", async () => {
+    const dashboard = service("neuroinsight-dashboard");
+
+    await expect(
+      dashboard.signSession({ openId: "user-1", appId: "other-dashboard", name: "User" }),
+    ).rejects.toThrow("does not match this dashboard");
+  });
+});

@@ -6,7 +6,7 @@ import type { Request } from "express";
 import { SignJWT, jwtVerify } from "jose";
 import type { User } from "../../drizzle/schema";
 import * as db from "../db";
-import { sessionSecretBytes } from "./authConfig";
+import { sessionApplicationId, sessionSecretBytes } from "./authConfig";
 import { ENV } from "./env";
 import type {
   ExchangeTokenRequest,
@@ -23,6 +23,12 @@ export type SessionPayload = {
   openId: string;
   appId: string;
   name: string;
+};
+
+type SessionConfiguration = {
+  appId: string;
+  secret: string;
+  production: boolean;
 };
 
 const EXCHANGE_TOKEN_PATH = `/webdev.v1.WebDevAuthPublicService/ExchangeToken`;
@@ -86,7 +92,14 @@ export class SDKServer {
   private readonly client: AxiosInstance;
   private readonly oauthService: OAuthService;
 
-  constructor(client: AxiosInstance = createOAuthHttpClient()) {
+  constructor(
+    client: AxiosInstance = createOAuthHttpClient(),
+    private readonly sessionConfiguration: SessionConfiguration = {
+      appId: ENV.appId,
+      secret: ENV.cookieSecret,
+      production: ENV.isProduction,
+    },
+  ) {
     this.client = client;
     this.oauthService = new OAuthService(this.client);
   }
@@ -155,7 +168,11 @@ export class SDKServer {
   }
 
   private getSessionSecret() {
-    return sessionSecretBytes(ENV.cookieSecret, ENV.isProduction);
+    return sessionSecretBytes(this.sessionConfiguration.secret, this.sessionConfiguration.production);
+  }
+
+  private getSessionAppId() {
+    return sessionApplicationId(this.sessionConfiguration.appId);
   }
 
   /**
@@ -170,7 +187,7 @@ export class SDKServer {
     return this.signSession(
       {
         openId,
-        appId: ENV.appId,
+        appId: this.getSessionAppId(),
         name: options.name || "",
       },
       options
@@ -181,6 +198,10 @@ export class SDKServer {
     payload: SessionPayload,
     options: { expiresInMs?: number } = {}
   ): Promise<string> {
+    const expectedAppId = this.getSessionAppId();
+    if (payload.appId !== expectedAppId) {
+      throw new Error("Session application identity does not match this dashboard.");
+    }
     const issuedAt = Date.now();
     const expiresInMs = options.expiresInMs ?? SESSION_MAX_AGE_MS;
     const expirationSeconds = Math.floor((issuedAt + expiresInMs) / 1000);
@@ -206,6 +227,7 @@ export class SDKServer {
 
     try {
       const secretKey = this.getSessionSecret();
+      const expectedAppId = this.getSessionAppId();
       const { payload } = await jwtVerify(cookieValue, secretKey, {
         algorithms: ["HS256"],
       });
@@ -214,7 +236,8 @@ export class SDKServer {
       if (
         !isNonEmptyString(openId) ||
         !isNonEmptyString(appId) ||
-        !isNonEmptyString(name)
+        !isNonEmptyString(name) ||
+        appId !== expectedAppId
       ) {
         console.warn("[Auth] Session payload missing required fields");
         return null;
