@@ -18,6 +18,12 @@
 import { storagePut } from "server/storage";
 import { ENV } from "./env";
 
+const IMAGE_REQUEST_TIMEOUT_MS = 30_000;
+const IMAGE_MAX_RESPONSE_BYTES = 12 * 1024 * 1024;
+const IMAGE_MAX_ENCODED_BYTES = 11 * 1024 * 1024;
+const IMAGE_MAX_DECODED_BYTES = 8 * 1024 * 1024;
+const IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+
 // Default model for generated sites. "MODEL_GPT_IMAGE_2" is the forge images.v1
 // enum for GPT Image 2 (id: gpt-image-2). If omitted, forge falls back to Gemini 2.5 Flash.
 const DEFAULT_IMAGE_MODEL = "MODEL_GPT_IMAGE_2";
@@ -39,6 +45,56 @@ export type GenerateImageOptions = {
 export type GenerateImageResponse = {
   url?: string;
 };
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+async function readBoundedResponse(response: Response): Promise<string> {
+  if (!response.body) return "";
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let totalBytes = 0;
+  let text = "";
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return text + decoder.decode();
+      totalBytes += value.byteLength;
+      if (totalBytes > IMAGE_MAX_RESPONSE_BYTES) {
+        throw new Error("response too large");
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+}
+
+function parseImageResponse(payload: unknown): { b64Json: string; mimeType: string } {
+  if (!isRecord(payload) || !isRecord(payload.image)) {
+    throw new Error("invalid response");
+  }
+  const b64Json = payload.image.b64Json;
+  const mimeType = payload.image.mimeType;
+  if (
+    typeof b64Json !== "string" ||
+    typeof mimeType !== "string" ||
+    !IMAGE_MIME_TYPES.has(mimeType) ||
+    b64Json.length > IMAGE_MAX_ENCODED_BYTES ||
+    b64Json.length === 0 ||
+    b64Json.length % 4 !== 0 ||
+    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(b64Json)
+  ) {
+    throw new Error("invalid response");
+  }
+
+  const buffer = Buffer.from(b64Json, "base64");
+  if (buffer.length === 0 || buffer.length > IMAGE_MAX_DECODED_BYTES) {
+    throw new Error("invalid response");
+  }
+  return { b64Json, mimeType };
+}
 
 export async function generateImage(
   options: GenerateImageOptions
@@ -63,47 +119,57 @@ export async function generateImage(
   const quality =
     options.quality ?? (model === DEFAULT_IMAGE_MODEL ? DEFAULT_IMAGE_QUALITY : undefined);
 
-  const response = await fetch(fullUrl, {
-    method: "POST",
-    headers: {
-      accept: "application/json",
-      "content-type": "application/json",
-      "connect-protocol-version": "1",
-      authorization: `Bearer ${ENV.forgeApiKey}`,
-    },
-    body: JSON.stringify({
-      prompt: options.prompt,
-      original_images: options.originalImages || [],
-      model,
-      ...(quality ? { quality } : {}),
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), IMAGE_REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(fullUrl, {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+        "connect-protocol-version": "1",
+        authorization: `Bearer ${ENV.forgeApiKey}`,
+      },
+      body: JSON.stringify({
+        prompt: options.prompt,
+        original_images: options.originalImages || [],
+        model,
+        ...(quality ? { quality } : {}),
+      }),
+      signal: controller.signal,
+    });
 
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(
-      `Image generation request failed (${response.status} ${response.statusText})${detail ? `: ${detail}` : ""}`
+    if (!response.ok) throw new Error("request failed");
+
+    let image: { b64Json: string; mimeType: string };
+    try {
+      const payload = JSON.parse(await readBoundedResponse(response));
+      image = parseImageResponse(payload);
+    } catch {
+      throw new Error("invalid response");
+    }
+    const { b64Json, mimeType } = image;
+    const extension = mimeType === "image/jpeg" ? "jpg" : mimeType.slice("image/".length);
+    const { url } = await storagePut(
+      `generated/${crypto.randomUUID()}.${extension}`,
+      Buffer.from(b64Json, "base64"),
+      mimeType,
     );
+    return { url };
+  } catch (error) {
+    if (error instanceof Error && error.message === "invalid response") {
+      throw new Error("Image generation returned an invalid response");
+    }
+    if (error instanceof Error && error.message === "request failed") {
+      throw new Error("Image generation request failed");
+    }
+    if (error instanceof Error && error.message.startsWith("Image generation")) {
+      throw error;
+    }
+    throw new Error("Image generation request failed");
+  } finally {
+    clearTimeout(timeout);
   }
-
-  const result = (await response.json()) as {
-    image: {
-      b64Json: string;
-      mimeType: string;
-    };
-  };
-  const base64Data = result.image.b64Json;
-  const buffer = Buffer.from(base64Data, "base64");
-
-  // Save to S3
-  const { url } = await storagePut(
-    `generated/${Date.now()}.png`,
-    buffer,
-    result.image.mimeType
-  );
-  return {
-    url,
-  };
 }
 
 export type ImageModelInfo = {
@@ -137,24 +203,44 @@ export async function listImageModels(): Promise<ListImageModelsResponse> {
     baseUrl
   ).toString();
 
-  const response = await fetch(fullUrl, {
-    method: "POST",
-    headers: {
-      accept: "application/json",
-      "content-type": "application/json",
-      "connect-protocol-version": "1",
-      authorization: `Bearer ${ENV.forgeApiKey}`,
-    },
-    body: "{}",
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), IMAGE_REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(fullUrl, {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+        "connect-protocol-version": "1",
+        authorization: `Bearer ${ENV.forgeApiKey}`,
+      },
+      body: "{}",
+      signal: controller.signal,
+    });
 
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(
-      `List image models failed (${response.status} ${response.statusText})${detail ? `: ${detail}` : ""}`
-    );
+    if (!response.ok) throw new Error("request failed");
+    let result: unknown;
+    try {
+      result = JSON.parse(await readBoundedResponse(response));
+    } catch {
+      throw new Error("invalid response");
+    }
+    if (!isRecord(result) || !Array.isArray(result.models)) {
+      throw new Error("invalid response");
+    }
+    const models = result.models.map(model => {
+      if (!isRecord(model)) throw new Error("invalid response");
+      if (model.model !== undefined && typeof model.model !== "string") throw new Error("invalid response");
+      if (model.id !== undefined && typeof model.id !== "string") throw new Error("invalid response");
+      return { model: model.model, id: model.id };
+    });
+    return { models };
+  } catch (error) {
+    if (error instanceof Error && error.message === "invalid response") {
+      throw new Error("Image model listing returned an invalid response");
+    }
+    throw new Error("Image model listing request failed");
+  } finally {
+    clearTimeout(timeout);
   }
-
-  const result = (await response.json()) as { models?: ImageModelInfo[] };
-  return { models: result.models ?? [] };
 }
