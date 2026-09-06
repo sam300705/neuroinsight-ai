@@ -271,11 +271,22 @@ const normalizeResponseFormat = ({
 const RETRY_MAX_RETRIES = 4;
 const RETRY_BASE_DELAY_MS = 500;
 const RETRY_MAX_DELAY_MS = 30_000;
+const LLM_REQUEST_TIMEOUT_MS = 30_000;
+const LLM_MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
+const LLM_MAX_CHOICES = 32;
+const LLM_MAX_MODELS = 100;
+const LLM_MAX_STRING_LENGTH = 256 * 1024;
 
 type FetchInit = NonNullable<Parameters<typeof fetch>[1]>;
 
-const sleep = (ms: number) =>
-  new Promise<void>(resolve => setTimeout(resolve, ms));
+const sleep = (ms: number, signal: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener("abort", () => {
+      clearTimeout(timer);
+      reject(new DOMException("The operation was aborted", "AbortError"));
+    }, { once: true });
+  });
 
 const parseRetryAfter = (value: string | null): number | undefined => {
   if (!value) return undefined;
@@ -297,18 +308,20 @@ const computeBackoffDelay = (
   return Math.min(Math.max(jittered, retryAfterMs ?? 0), RETRY_MAX_DELAY_MS);
 };
 
-// Retries non-2xx responses and network errors with exponential backoff, then
-// returns the final Response so callers keep their existing error handling.
+const isRetryableStatus = (status: number) =>
+  status === 408 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
+
 const fetchWithBackoff = async (
   url: string,
   init: FetchInit
 ): Promise<Response> => {
   let lastError: unknown;
+  const signal = init.signal;
 
   for (let attempt = 0; attempt <= RETRY_MAX_RETRIES; attempt++) {
     try {
       const response = await fetch(url, init);
-      if (response.ok || attempt === RETRY_MAX_RETRIES) {
+      if (response.ok || attempt === RETRY_MAX_RETRIES || !isRetryableStatus(response.status)) {
         return response;
       }
 
@@ -320,23 +333,75 @@ const fetchWithBackoff = async (
       } catch {
         // Body already settled; nothing to clean up.
       }
-      console.warn(
-        `LLM request retry ${attempt + 1}/${RETRY_MAX_RETRIES} after status ${response.status}`
-      );
-      await sleep(computeBackoffDelay(attempt, retryAfterMs));
+      await sleep(computeBackoffDelay(attempt, retryAfterMs), signal as AbortSignal);
     } catch (error) {
       lastError = error;
+      if (signal?.aborted) throw error;
       if (attempt === RETRY_MAX_RETRIES) throw error;
-      console.warn(
-        `LLM request retry ${attempt + 1}/${RETRY_MAX_RETRIES} after network error`
-      );
-      await sleep(computeBackoffDelay(attempt));
+      await sleep(computeBackoffDelay(attempt), signal as AbortSignal);
     }
   }
 
   throw lastError instanceof Error
     ? lastError
     : new Error("LLM request failed after exhausting retries");
+};
+
+const readBoundedResponse = async (response: Response): Promise<string> => {
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let totalBytes = 0;
+  let text = "";
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return text + decoder.decode();
+      totalBytes += value.byteLength;
+      if (totalBytes > LLM_MAX_RESPONSE_BYTES) throw new Error("response too large");
+      text += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+};
+
+const parseJsonResponse = async (response: Response): Promise<unknown> => {
+  try {
+    return JSON.parse(await readBoundedResponse(response));
+  } catch {
+    throw new Error("invalid response");
+  }
+};
+
+const isNonEmptyString = (value: unknown, maxLength = LLM_MAX_STRING_LENGTH): value is string =>
+  typeof value === "string" && value.trim().length > 0 && value.length <= maxLength;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const assertInvokeResult = (value: unknown): InvokeResult => {
+  if (!isRecord(value) || !isNonEmptyString(value.id, 256) || typeof value.created !== "number" || !Number.isFinite(value.created) || !isNonEmptyString(value.model, 256) || !Array.isArray(value.choices) || value.choices.length === 0 || value.choices.length > LLM_MAX_CHOICES) {
+    throw new Error("invalid response");
+  }
+  for (const choice of value.choices) {
+    if (!isRecord(choice) || !Number.isInteger(choice.index) || !isRecord(choice.message) || !isNonEmptyString(choice.message.role, 32) || (typeof choice.message.content !== "string" && !Array.isArray(choice.message.content)) || (choice.finish_reason !== null && !isNonEmptyString(choice.finish_reason, 64))) {
+      throw new Error("invalid response");
+    }
+  }
+  return value as unknown as InvokeResult;
+};
+
+const assertModelsResponse = (value: unknown): ModelsResponse => {
+  if (!isRecord(value) || !isNonEmptyString(value.object, 64) || !Array.isArray(value.data) || value.data.length > LLM_MAX_MODELS) {
+    throw new Error("invalid response");
+  }
+  for (const model of value.data) {
+    if (!isRecord(model) || !isNonEmptyString(model.id, 256) || !isNonEmptyString(model.object, 64) || typeof model.created !== "number" || !Number.isFinite(model.created) || !isNonEmptyString(model.owned_by, 256)) {
+      throw new Error("invalid response");
+    }
+  }
+  return value as unknown as ModelsResponse;
 };
 
 export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
@@ -401,23 +466,26 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.response_format = normalizedResponseFormat;
   }
 
-  const response = await fetchWithBackoff(resolveApiUrl(), {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${ENV.forgeApiKey}`,
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `LLM invoke failed: ${response.status} ${response.statusText} – ${errorText}`
-    );
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), LLM_REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetchWithBackoff(resolveApiUrl(), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${ENV.forgeApiKey}`,
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`LLM invoke failed (${response.status})`);
+    return assertInvokeResult(await parseJsonResponse(response));
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("LLM invoke failed")) throw error;
+    throw new Error("LLM invoke request failed");
+  } finally {
+    clearTimeout(timeout);
   }
-
-  return (await response.json()) as InvokeResult;
 }
 
 export type ModelInfo = {
@@ -439,16 +507,19 @@ export async function listLLMModels(): Promise<ModelsResponse> {
     ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/models`
     : "https://forge.manus.im/v1/models";
 
-  const response = await fetchWithBackoff(url, {
-    headers: { authorization: `Bearer ${ENV.forgeApiKey}` },
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `List LLM models failed: ${response.status} ${response.statusText} – ${errorText}`
-    );
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), LLM_REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetchWithBackoff(url, {
+      headers: { authorization: `Bearer ${ENV.forgeApiKey}` },
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`List LLM models failed (${response.status})`);
+    return assertModelsResponse(await parseJsonResponse(response));
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("List LLM models failed")) throw error;
+    throw new Error("List LLM models request failed");
+  } finally {
+    clearTimeout(timeout);
   }
-
-  return (await response.json()) as ModelsResponse;
 }
