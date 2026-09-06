@@ -40,6 +40,9 @@ type SessionConfiguration = {
 const EXCHANGE_TOKEN_PATH = `/webdev.v1.WebDevAuthPublicService/ExchangeToken`;
 const GET_USER_INFO_PATH = `/webdev.v1.WebDevAuthPublicService/GetUserInfo`;
 const GET_USER_INFO_WITH_JWT_PATH = `/webdev.v1.WebDevAuthPublicService/GetUserInfoWithJwt`;
+export const SESSION_TOKEN_ISSUER = "urn:neuroinsight:dashboard";
+const SESSION_MAX_AGE_SECONDS = Math.ceil(SESSION_MAX_AGE_MS / 1000);
+const SESSION_CLOCK_TOLERANCE_SECONDS = 5;
 
 class OAuthService {
   constructor(private client: ReturnType<typeof axios.create>) {
@@ -196,7 +199,7 @@ export class SDKServer {
       {
         openId,
         appId: this.getSessionAppId(),
-        name: options.name || "",
+        name: options.name?.trim() || "User",
       },
       options
     );
@@ -214,6 +217,13 @@ export class SDKServer {
     }
     const issuedAt = Date.now();
     const expiresInMs = options.expiresInMs ?? SESSION_MAX_AGE_MS;
+    if (
+      !Number.isSafeInteger(expiresInMs) ||
+      expiresInMs <= 0 ||
+      expiresInMs > SESSION_MAX_AGE_MS
+    ) {
+      throw new Error("Session lifetime is outside the allowed range.");
+    }
     const expirationSeconds = Math.floor((issuedAt + expiresInMs) / 1000);
     const secretKey = this.getSessionSecret();
 
@@ -223,6 +233,9 @@ export class SDKServer {
       name: payload.name,
     })
       .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+      .setIssuer(SESSION_TOKEN_ISSUER)
+      .setAudience(expectedAppId)
+      .setIssuedAt(Math.floor(issuedAt / 1000))
       .setExpirationTime(expirationSeconds)
       .sign(secretKey);
   }
@@ -240,6 +253,11 @@ export class SDKServer {
       const expectedAppId = this.getSessionAppId();
       const { payload } = await jwtVerify(cookieValue, secretKey, {
         algorithms: ["HS256"],
+        typ: "JWT",
+        issuer: SESSION_TOKEN_ISSUER,
+        audience: expectedAppId,
+        maxTokenAge: SESSION_MAX_AGE_SECONDS,
+        clockTolerance: SESSION_CLOCK_TOLERANCE_SECONDS,
       });
       const { openId, appId, name } = payload as Record<string, unknown>;
 
