@@ -23,6 +23,8 @@ const IMAGE_MAX_RESPONSE_BYTES = 12 * 1024 * 1024;
 const IMAGE_MAX_ENCODED_BYTES = 11 * 1024 * 1024;
 const IMAGE_MAX_DECODED_BYTES = 8 * 1024 * 1024;
 const IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+const IMAGE_MAX_MODELS = 100;
+const IMAGE_MODEL_FIELD_MAX_LENGTH = 256;
 
 // Default model for generated sites. "MODEL_GPT_IMAGE_2" is the forge images.v1
 // enum for GPT Image 2 (id: gpt-image-2). If omitted, forge falls back to Gemini 2.5 Flash.
@@ -179,6 +181,20 @@ export type ImageModelInfo = {
   id?: string;
 };
 
+function parseImageModel(value: unknown): ImageModelInfo {
+  if (!isRecord(value)) throw new Error("invalid response");
+  const model = value.model;
+  const id = value.id;
+  if (model !== undefined && (typeof model !== "string" || model.trim().length === 0 || model.length > IMAGE_MODEL_FIELD_MAX_LENGTH)) {
+    throw new Error("invalid response");
+  }
+  if (id !== undefined && (typeof id !== "string" || id.trim().length === 0 || id.length > IMAGE_MODEL_FIELD_MAX_LENGTH)) {
+    throw new Error("invalid response");
+  }
+  if (model === undefined && id === undefined) throw new Error("invalid response");
+  return { model: model as string | undefined, id: id as string | undefined };
+}
+
 export type ListImageModelsResponse = {
   models: ImageModelInfo[];
 };
@@ -225,15 +241,10 @@ export async function listImageModels(): Promise<ListImageModelsResponse> {
     } catch {
       throw new Error("invalid response");
     }
-    if (!isRecord(result) || !Array.isArray(result.models)) {
+    if (!isRecord(result) || !Array.isArray(result.models) || result.models.length > IMAGE_MAX_MODELS) {
       throw new Error("invalid response");
     }
-    const models = result.models.map(model => {
-      if (!isRecord(model)) throw new Error("invalid response");
-      if (model.model !== undefined && typeof model.model !== "string") throw new Error("invalid response");
-      if (model.id !== undefined && typeof model.id !== "string") throw new Error("invalid response");
-      return { model: model.model, id: model.id };
-    });
+    const models = result.models.map(parseImageModel);
     return { models };
   } catch (error) {
     if (error instanceof Error && error.message === "invalid response") {

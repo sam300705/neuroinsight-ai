@@ -6,7 +6,7 @@ vi.mock("server/storage", () => ({
 }));
 
 import { storagePut } from "server/storage";
-import { generateImage } from "./imageGeneration";
+import { generateImage, listImageModels } from "./imageGeneration";
 
 const originalForgeUrl = ENV.forgeApiUrl;
 const originalForgeKey = ENV.forgeApiKey;
@@ -83,10 +83,75 @@ describe("image generation boundary", () => {
       "fetch",
       vi.fn().mockResolvedValue(new Response("provider-secret", { status: 502, statusText: "private status" })),
     );
-    await expect(generateImage({ prompt: "synthetic" })).rejects.toThrow("Image generation request failed");
-    await expect(generateImage({ prompt: "synthetic" })).rejects.not.toThrow("provider-secret");
+    const rejection = generateImage({ prompt: "synthetic" });
+    await expect(rejection).rejects.toThrow("Image generation request failed");
+    await expect(rejection).rejects.not.toThrow("provider-secret");
 
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new DOMException("timed out", "AbortError")));
     await expect(generateImage({ prompt: "synthetic" })).rejects.toThrow("Image generation request failed");
+  });
+
+  it("lists bounded, meaningful image models", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ models: [{ model: "MODEL_GPT_IMAGE_2", id: "gpt-image-2" }] }), { status: 200 }),
+      ),
+    );
+    await expect(listImageModels()).resolves.toEqual({ models: [{ model: "MODEL_GPT_IMAGE_2", id: "gpt-image-2" }] });
+  });
+
+  it("rejects malformed, oversized, and meaningless model lists", async () => {
+    const bodies = [
+      "not-json",
+      JSON.stringify({}),
+      JSON.stringify({ models: "wrong" }),
+      JSON.stringify({ models: [{}] }),
+      JSON.stringify({ models: [{ model: "   " }] }),
+      JSON.stringify({ models: [{ id: "x".repeat(257) }] }),
+      JSON.stringify({ models: Array.from({ length: 101 }, (_, index) => ({ id: `model-${index}` })) }),
+    ];
+    for (const body of bodies) {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body, { status: 200 })));
+      await expect(listImageModels()).rejects.toThrow("Image model listing returned an invalid response");
+    }
+  });
+
+  it("maps model-list provider failures without leaking details or waiting for a timeout", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("model-provider-secret", { status: 502 })));
+    const rejection = listImageModels();
+    const error = await rejection.catch(error => error as Error);
+    expect(error.message).toBe("Image model listing request failed");
+    expect(error.message).not.toContain("model-provider-secret");
+
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockImplementation((_url: string, init: RequestInit) =>
+      new Promise((_resolve, reject) => {
+        init.signal?.addEventListener("abort", () => reject(new DOMException("timed out", "AbortError")));
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const hangingRequest = listImageModels();
+    const hangingAssertion = expect(hangingRequest).rejects.toThrow("Image model listing request failed");
+    await vi.advanceTimersByTimeAsync(30_000);
+    await hangingAssertion;
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ signal: expect.any(AbortSignal) });
+    vi.useRealTimers();
+  });
+
+  it("aborts a genuinely hanging image request at its deadline", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockImplementation((_url: string, init: RequestInit) =>
+      new Promise((_resolve, reject) => {
+        init.signal?.addEventListener("abort", () => reject(new DOMException("timed out", "AbortError")));
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const hangingRequest = generateImage({ prompt: "synthetic" });
+    const hangingAssertion = expect(hangingRequest).rejects.toThrow("Image generation request failed");
+    await vi.advanceTimersByTimeAsync(30_000);
+    await hangingAssertion;
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ signal: expect.any(AbortSignal) });
+    vi.useRealTimers();
   });
 });
