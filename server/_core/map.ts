@@ -1,9 +1,9 @@
 /**
  * Google Maps API Integration for Manus WebDev Templates
- * 
+ *
  * Main function: makeRequest<T>(endpoint, params) - Makes authenticated requests to Google Maps APIs
  * All credentials are automatically injected. Array parameters use | as separator.
- * 
+ *
  * See API examples below the type definitions for usage patterns.
  */
 
@@ -18,6 +18,19 @@ type MapsConfig = {
   apiKey: string;
 };
 
+const MAPS_REQUEST_TIMEOUT_MS = 10_000;
+const MAPS_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+const MAPS_MAX_REQUEST_BODY_BYTES = 64 * 1024;
+const MAPS_MAX_ENDPOINT_LENGTH = 256;
+const MAPS_MAX_PARAMS = 32;
+const MAPS_MAX_PARAM_KEY_LENGTH = 64;
+const MAPS_MAX_PARAM_VALUE_LENGTH = 2048;
+const MAPS_MAX_ARRAY_VALUES = 50;
+const MAPS_MAX_URL_LENGTH = 8192;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 function getMapsConfig(): MapsConfig {
   const baseUrl = ENV.forgeApiUrl;
   const apiKey = ENV.forgeApiKey;
@@ -28,11 +41,85 @@ function getMapsConfig(): MapsConfig {
     );
   }
 
-  return {
-    baseUrl: baseUrl.replace(/\/+$/, ""),
-    apiKey,
-  };
+  let parsed: URL;
+  try {
+    parsed = new URL(baseUrl);
+  } catch {
+    throw new Error("Google Maps proxy configuration is invalid");
+  }
+  const isLocalDevelopment =
+    !ENV.isProduction &&
+    parsed.protocol === "http:" &&
+    ["localhost", "127.0.0.1", "::1"].includes(parsed.hostname);
+  if (
+    (parsed.protocol !== "https:" && !isLocalDevelopment) ||
+    parsed.username ||
+    parsed.password ||
+    parsed.search ||
+    parsed.hash
+  ) {
+    throw new Error("Google Maps proxy configuration is invalid");
+  }
+
+  return { baseUrl: parsed.toString().replace(/\/+$/, ""), apiKey };
 }
+
+const validateEndpoint = (endpoint: string): void => {
+  if (
+    typeof endpoint !== "string" ||
+    endpoint.length === 0 ||
+    endpoint.length > MAPS_MAX_ENDPOINT_LENGTH ||
+    !/^\/(?:maps\/api|v1)\/[A-Za-z0-9._~/-]+$/.test(endpoint) ||
+    endpoint.split("/").some(segment => segment === "." || segment === "..")
+  ) {
+    throw new Error("Google Maps endpoint is invalid");
+  }
+};
+
+const serializeParamValue = (value: unknown): string => {
+  if (Array.isArray(value)) {
+    if (value.length === 0 || value.length > MAPS_MAX_ARRAY_VALUES) {
+      throw new Error("Google Maps parameters are invalid");
+    }
+    return value.map(serializeParamValue).join("|");
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value))
+      throw new Error("Google Maps parameters are invalid");
+    return String(value);
+  }
+  if (typeof value !== "string" && typeof value !== "boolean") {
+    throw new Error("Google Maps parameters are invalid");
+  }
+  const serialized = String(value);
+  if (
+    serialized.length > MAPS_MAX_PARAM_VALUE_LENGTH ||
+    /[\u0000-\u001f\u007f]/.test(serialized)
+  ) {
+    throw new Error("Google Maps parameters are invalid");
+  }
+  return serialized;
+};
+
+const readBoundedResponse = async (response: Response): Promise<string> => {
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let totalBytes = 0;
+  let text = "";
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return text + decoder.decode();
+      totalBytes += value.byteLength;
+      if (totalBytes > MAPS_MAX_RESPONSE_BYTES)
+        throw new Error("response too large");
+      text += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+};
 
 // ============================================================================
 // Core Request Handler
@@ -45,7 +132,7 @@ interface RequestOptions {
 
 /**
  * Make authenticated requests to Google Maps APIs
- * 
+ *
  * @param endpoint - The API endpoint (e.g., "/maps/api/geocode/json")
  * @param params - Query parameters for the request
  * @param options - Additional request options
@@ -57,6 +144,14 @@ export async function makeRequest<T = unknown>(
   options: RequestOptions = {}
 ): Promise<T> {
   const { baseUrl, apiKey } = getMapsConfig();
+  validateEndpoint(endpoint);
+  const method = options.method ?? "GET";
+  if (method !== "GET" && method !== "POST") {
+    throw new Error("Google Maps request method is invalid");
+  }
+  if (method === "GET" && options.body !== undefined) {
+    throw new Error("Google Maps GET requests cannot include a body");
+  }
 
   // Construct full URL: baseUrl + /v1/maps/proxy + endpoint
   const url = new URL(`${baseUrl}/v1/maps/proxy${endpoint}`);
@@ -65,28 +160,75 @@ export async function makeRequest<T = unknown>(
   url.searchParams.append("key", apiKey);
 
   // Add other query parameters
-  Object.entries(params).forEach(([key, value]) => {
+  const entries = Object.entries(params);
+  if (entries.length > MAPS_MAX_PARAMS) {
+    throw new Error("Google Maps parameters are invalid");
+  }
+  entries.forEach(([key, value]) => {
     if (value !== undefined && value !== null) {
-      url.searchParams.append(key, String(value));
+      if (
+        key.length === 0 ||
+        key.length > MAPS_MAX_PARAM_KEY_LENGTH ||
+        key.toLowerCase() === "key" ||
+        !/^[A-Za-z][A-Za-z0-9_.-]*$/.test(key)
+      ) {
+        throw new Error("Google Maps parameters are invalid");
+      }
+      url.searchParams.append(key, serializeParamValue(value));
     }
   });
 
-  const response = await fetch(url.toString(), {
-    method: options.method || "GET",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: options.body ? JSON.stringify(options.body) : undefined,
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `Google Maps API request failed (${response.status} ${response.statusText}): ${errorText}`
-    );
+  if (url.toString().length > MAPS_MAX_URL_LENGTH) {
+    throw new Error("Google Maps request URL is too large");
   }
 
-  return (await response.json()) as T;
+  let requestBody: string | undefined;
+  if (options.body !== undefined) {
+    if (!isRecord(options.body))
+      throw new Error("Google Maps request body is invalid");
+    try {
+      requestBody = JSON.stringify(options.body);
+    } catch {
+      throw new Error("Google Maps request body is invalid");
+    }
+    if (Buffer.byteLength(requestBody, "utf8") > MAPS_MAX_REQUEST_BODY_BYTES) {
+      throw new Error("Google Maps request body is too large");
+    }
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), MAPS_REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(url.toString(), {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: requestBody,
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => undefined);
+      throw new Error(`Google Maps API request failed (${response.status})`);
+    }
+
+    try {
+      const payload: unknown = JSON.parse(await readBoundedResponse(response));
+      if (!isRecord(payload)) throw new Error("invalid response");
+      return payload as T;
+    } catch {
+      throw new Error("Google Maps API returned an invalid response");
+    }
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message.startsWith("Google Maps API ")
+    ) {
+      throw error;
+    }
+    throw new Error("Google Maps API request failed");
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 // ============================================================================
@@ -313,7 +455,3 @@ export type RoadsResult = {
  * Output: Image URL (not JSON) - use directly in <img src={url} />
  * Note: Construct URL manually with getMapsConfig() for auth
  */
-
-
-
-
