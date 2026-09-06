@@ -18,6 +18,8 @@ export const measurementSchema = z.object({
   limitation: z.string().max(2000),
 });
 
+export const warningsSchema = z.array(z.string().max(1000)).max(20);
+
 export const scanResultSchema = z.object({
   scanId: z.string().uuid(),
   mode: z.literal("classification"),
@@ -30,7 +32,7 @@ export const scanResultSchema = z.object({
   uncertaintyReason: z.string().max(2000).optional(),
   manualReviewRecommended: z.boolean(),
   measurement: measurementSchema,
-  warnings: z.array(z.string().max(1000)).max(20),
+  warnings: warningsSchema,
 });
 
 const artifactRegistrationBaseSchema = z.object({

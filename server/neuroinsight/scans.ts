@@ -2,24 +2,70 @@ import { and, desc, eq, inArray, like, lt } from "drizzle-orm";
 import { scanArtifacts, scanRecords } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { storageDelete, storageGetSignedUrl, storagePutStable } from "../storage";
-import { artifactRegistrationSchema, scanResultSchema, validateArtifactPayload } from "./validation";
+import { artifactRegistrationSchema, measurementSchema, scanResultSchema, validateArtifactPayload, warningsSchema } from "./validation";
 import { deleteAllOwnedScans, deleteOwnedScan, issueOwnedArtifactDownload } from "./artifactLifecycle";
 import { ACTIVE_HISTORY_MODE, historyListInputSchema } from "./historyPolicy";
 import { protectedProcedure, router } from "../_core/trpc";
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+
+const historyUnavailable = (): never => {
+  throw new TRPCError({
+    code: "SERVICE_UNAVAILABLE",
+    message: "Scan history is temporarily unavailable.",
+  });
+};
+
+const parseStoredJson = <T>(value: string, schema: z.ZodType<T>): T | undefined => {
+  try {
+    const parsed = schema.safeParse(JSON.parse(value));
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
+  }
+};
 
 export const scansRouter = router({
   list: protectedProcedure.input(historyListInputSchema).query(async ({ ctx, input }) => {
     const db = await getDb();
-    if (!db) return { items: [], nextCursor: null };
-    const conditions = [eq(scanRecords.userId, ctx.user.id), eq(scanRecords.mode, ACTIVE_HISTORY_MODE), input.cursor ? lt(scanRecords.id, input.cursor) : undefined, input.predictedClass ? eq(scanRecords.predictedClass, input.predictedClass) : undefined, input.status ? eq(scanRecords.status, input.status) : undefined, input.search ? like(scanRecords.scanId, `%${input.search.replace(/[\\%_]/g, "\\$&")}%`) : undefined].filter(Boolean);
-    const records = await db.select().from(scanRecords).where(and(...conditions)).orderBy(desc(scanRecords.id)).limit(input.limit + 1);
-    const hasNextPage = records.length > input.limit;
-    const page = hasNextPage ? records.slice(0, input.limit) : records;
-    const artifacts = page.length
-      ? await db.select().from(scanArtifacts).where(inArray(scanArtifacts.scanRecordId, page.map(record => record.id)))
-      : [];
-    return { items: page.map(record => ({ ...record, confidenceScore: record.confidenceScore === null ? null : Number(record.confidenceScore), calibrated: Boolean(record.calibrated), manualReviewRecommended: Boolean(record.manualReviewRecommended), measurement: JSON.parse(record.measurementJson), warnings: JSON.parse(record.warningsJson), artifacts: artifacts.filter(artifact => artifact.scanRecordId === record.id && !artifact.storageKey.startsWith("pending:")).map(artifact => ({ id: artifact.id, artifactType: artifact.artifactType, contentType: artifact.contentType, createdAt: artifact.createdAt })) })), nextCursor: hasNextPage ? page.at(-1)?.id ?? null : null };
+    if (!db) return historyUnavailable();
+    try {
+      const conditions = [eq(scanRecords.userId, ctx.user.id), eq(scanRecords.mode, ACTIVE_HISTORY_MODE), input.cursor ? lt(scanRecords.id, input.cursor) : undefined, input.predictedClass ? eq(scanRecords.predictedClass, input.predictedClass) : undefined, input.status ? eq(scanRecords.status, input.status) : undefined, input.search ? like(scanRecords.scanId, `%${input.search.replace(/[\\%_]/g, "\\$&")}%`) : undefined].filter(Boolean);
+      const records = await db.select().from(scanRecords).where(and(...conditions)).orderBy(desc(scanRecords.id)).limit(input.limit + 1);
+      const hasNextPage = records.length > input.limit;
+      const page = hasNextPage ? records.slice(0, input.limit) : records;
+      const artifacts = page.length
+        ? await db.select().from(scanArtifacts).where(inArray(scanArtifacts.scanRecordId, page.map(record => record.id)))
+        : [];
+      let omittedCorruptRecords = 0;
+      const items = page.flatMap(record => {
+        const measurement = parseStoredJson(record.measurementJson, measurementSchema);
+        const warnings = parseStoredJson(record.warningsJson, warningsSchema);
+        const confidenceScore = record.confidenceScore === null ? null : Number(record.confidenceScore);
+        if (!measurement || !warnings || (confidenceScore !== null && !Number.isFinite(confidenceScore))) {
+          omittedCorruptRecords += 1;
+          return [];
+        }
+        return [{
+          ...record,
+          confidenceScore,
+          calibrated: Boolean(record.calibrated),
+          manualReviewRecommended: Boolean(record.manualReviewRecommended),
+          measurement,
+          warnings,
+          artifacts: artifacts
+            .filter(artifact => artifact.scanRecordId === record.id && !artifact.storageKey.startsWith("pending:"))
+            .map(artifact => ({ id: artifact.id, artifactType: artifact.artifactType, contentType: artifact.contentType, createdAt: artifact.createdAt })),
+        }];
+      });
+      return {
+        items,
+        nextCursor: hasNextPage ? page.at(-1)?.id ?? null : null,
+        omittedCorruptRecords,
+      };
+    } catch {
+      return historyUnavailable();
+    }
   }),
 
   saveResult: protectedProcedure.input(scanResultSchema).mutation(async ({ ctx, input }) => {
