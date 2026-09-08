@@ -45,3 +45,13 @@ through object spreading. Invalid rows are omitted with a visible warning; the r
 page cursor is retained. A rendered-component regression verifies the Next button
 stays enabled on an all-corrupt page. Delete-all resets pagination and search input
 matches the API's 64-character limit.
+
+## HTTP and browser error correction
+
+The Node dashboard now returns JSON 404 for unknown `/api` paths before SPA
+fallback. Its final error middleware maps parser failures to fixed 400/413/415
+responses and unexpected failures to fixed 500 responses. Existing security
+headers remain present. Tests exercise actual Express HTTP requests and verify
+successful API and SPA paths continue working. Browser query/mutation failures
+log fixed operation labels only; the existing unauthorized login transition is
+preserved and tested. Both new error modules join the coverage gate.

@@ -7,6 +7,7 @@ import { registerOAuthRoutes } from "./oauth";
 import { csrfSameOriginGuard } from "./csrf";
 import { sessionApplicationId, sessionSecretBytes } from "./authConfig";
 import { ENV } from "./env";
+import { apiNotFound, safeHttpError } from "./httpErrors";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { applyHttpSecurityHeaders, HEADERS_TIMEOUT_MS, KEEP_ALIVE_TIMEOUT_MS, MAX_TRPC_BODY_SIZE, REQUEST_TIMEOUT_MS } from "./httpSecurity";
@@ -51,12 +52,15 @@ async function startServer() {
       createContext,
     })
   );
+  app.use("/api", apiNotFound);
   // development mode uses Vite, production mode uses static files
   if (process.env.NODE_ENV === "development") {
     await setupVite(app, server);
   } else {
     serveStatic(app);
   }
+
+  app.use(safeHttpError);
 
   const preferredPort = configuredPort(process.env.PORT);
   const port = await selectServerPort(preferredPort, production, isPortAvailable);
