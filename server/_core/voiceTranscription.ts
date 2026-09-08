@@ -1,3 +1,4 @@
+import { providerBaseUrl, providerFetch } from "./providerTransport";
 /**
  * Voice transcription helper using internal Speech-to-Text service
  *
@@ -187,6 +188,7 @@ export async function transcribeAudio(
       );
     }
 
+    providerBaseUrl(ENV.forgeApiUrl);
     // Step 2: Download audio from URL
     const audioUrl = validatedAudioUrl(options.audioUrl);
     if (!audioUrl) {
@@ -263,13 +265,11 @@ export async function transcribeAudio(
     formData.append("prompt", prompt);
 
     // Step 4: Call the transcription service
-    const baseUrl = ENV.forgeApiUrl.endsWith("/")
-      ? ENV.forgeApiUrl
-      : `${ENV.forgeApiUrl}/`;
+    const baseUrl = `${providerBaseUrl(ENV.forgeApiUrl)}/`;
 
     const fullUrl = new URL("v1/audio/transcriptions", baseUrl).toString();
 
-    const response = await fetch(fullUrl, {
+    const response = await providerFetch(fullUrl, {
       method: "POST",
       headers: {
         authorization: `Bearer ${ENV.forgeApiKey}`,

@@ -1,3 +1,4 @@
+import { providerBaseUrl, providerFetch } from "./providerTransport";
 /**
  * Quick example (matches curl usage):
  *   await callDataApi("Youtube/search", {
@@ -51,14 +52,14 @@ export async function callDataApi(
   }
 
   // Build the full URL by appending the service path to the base URL
-  const baseUrl = ENV.forgeApiUrl.endsWith("/") ? ENV.forgeApiUrl : `${ENV.forgeApiUrl}/`;
+  const baseUrl = `${providerBaseUrl(ENV.forgeApiUrl)}/`;
   const fullUrl = new URL("webdevtoken.v1.WebDevService/CallApi", baseUrl).toString();
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), DATA_API_TIMEOUT_MS);
 
   try {
-    const response = await fetch(fullUrl, {
+    const response = await providerFetch(fullUrl, {
       method: "POST",
       headers: {
         accept: "application/json",

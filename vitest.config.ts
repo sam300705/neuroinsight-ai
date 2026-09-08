@@ -24,6 +24,7 @@ export default defineConfig({
         "client/src/lib/inferenceApi.ts",
         "server/_core/csrf.ts",
         "server/_core/oauthBoundary.ts",
+        "server/_core/providerTransport.ts",
         "client/src/lib/apiErrorPolicy.ts",
         "server/_core/httpErrors.ts",
         "server/_core/httpSecurity.ts",

@@ -1,3 +1,4 @@
+import { providerBaseUrl, providerFetch } from "./providerTransport";
 import { TRPCError } from "@trpc/server";
 import { ENV } from "./env";
 
@@ -81,7 +82,7 @@ const buildEndpoint = (rpc: string): string => {
     });
   }
   try {
-    const baseUrl = ENV.forgeApiUrl;
+    const baseUrl = providerBaseUrl(ENV.forgeApiUrl);
     const normalizedBase = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
     return new URL(`${SERVICE}/${rpc}`, normalizedBase).toString();
   } catch {
@@ -156,7 +157,7 @@ const callForge = async <T>(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), HEARTBEAT_TIMEOUT_MS);
   try {
-    const response = await fetch(endpoint, {
+    const response = await providerFetch(endpoint, {
       method: "POST",
       headers,
       body: requestBody,

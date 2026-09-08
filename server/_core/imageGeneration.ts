@@ -1,3 +1,4 @@
+import { providerBaseUrl, providerFetch } from "./providerTransport";
 /**
  * Image generation helper using internal ImageService
  *
@@ -109,9 +110,7 @@ export async function generateImage(
   }
 
   // Build the full URL by appending the service path to the base URL
-  const baseUrl = ENV.forgeApiUrl.endsWith("/")
-    ? ENV.forgeApiUrl
-    : `${ENV.forgeApiUrl}/`;
+  const baseUrl = `${providerBaseUrl(ENV.forgeApiUrl)}/`;
   const fullUrl = new URL(
     "images.v1.ImageService/GenerateImage",
     baseUrl
@@ -124,7 +123,7 @@ export async function generateImage(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), IMAGE_REQUEST_TIMEOUT_MS);
   try {
-    const response = await fetch(fullUrl, {
+    const response = await providerFetch(fullUrl, {
       method: "POST",
       headers: {
         accept: "application/json",
@@ -211,9 +210,7 @@ export async function listImageModels(): Promise<ListImageModelsResponse> {
     throw new Error("BUILT_IN_FORGE_API_KEY is not configured");
   }
 
-  const baseUrl = ENV.forgeApiUrl.endsWith("/")
-    ? ENV.forgeApiUrl
-    : `${ENV.forgeApiUrl}/`;
+  const baseUrl = `${providerBaseUrl(ENV.forgeApiUrl)}/`;
   const fullUrl = new URL(
     "images.v1.ImageService/ListModels",
     baseUrl
@@ -222,7 +219,7 @@ export async function listImageModels(): Promise<ListImageModelsResponse> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), IMAGE_REQUEST_TIMEOUT_MS);
   try {
-    const response = await fetch(fullUrl, {
+    const response = await providerFetch(fullUrl, {
       method: "POST",
       headers: {
         accept: "application/json",

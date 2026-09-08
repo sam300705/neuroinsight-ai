@@ -1,3 +1,4 @@
+import { providerFetch } from "./providerTransport";
 /**
  * Google Maps API Integration for Manus WebDev Templates
  *
@@ -199,7 +200,7 @@ export async function makeRequest<T = unknown>(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), MAPS_REQUEST_TIMEOUT_MS);
   try {
-    const response = await fetch(url.toString(), {
+    const response = await providerFetch(url.toString(), {
       method,
       headers: { "Content-Type": "application/json" },
       body: requestBody,

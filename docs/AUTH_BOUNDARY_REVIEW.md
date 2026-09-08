@@ -72,3 +72,13 @@ metadata replacement and ambiguous-commit recovery are still required. A simple
 catch-and-delete is unsafe: the database may have committed before the client
 received an error. Provider deletion and recovery must be integration-tested
 before making durability or physical-erasure guarantees.
+
+## Dormant provider transport correction
+
+Data API, image generation/model listing, LLM/model listing, notifications,
+heartbeat and transcription validate configured Forge URLs as credential-free
+HTTPS with no query, fragment, whitespace or backslash. Their credential-bearing
+fetches, plus maps proxy calls, now refuse redirects while preserving existing
+request deadlines. Transcription validates provider configuration before its
+separate allowlisted audio download. No helper was activated or added to a route.
+The transport module is included in selected-module coverage.

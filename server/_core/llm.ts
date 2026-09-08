@@ -1,3 +1,4 @@
+import { providerBaseUrl, providerFetch } from "./providerTransport";
 import { ENV } from "./env";
 
 export type Role = "system" | "user" | "assistant" | "tool" | "function";
@@ -218,8 +219,8 @@ const normalizeToolChoice = (
 };
 
 const resolveApiUrl = () =>
-  ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0
-    ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions`
+  ENV.forgeApiUrl
+    ? `${providerBaseUrl(ENV.forgeApiUrl)}/v1/chat/completions`
     : "https://forge.manus.im/v1/chat/completions";
 
 const assertApiKey = () => {
@@ -355,7 +356,7 @@ const fetchWithBackoff = async (
 
   for (let attempt = 0; attempt <= RETRY_MAX_RETRIES; attempt++) {
     try {
-      const response = await fetch(url, init);
+      const response = await providerFetch(url, init);
       if (
         response.ok ||
         attempt === RETRY_MAX_RETRIES ||
@@ -694,8 +695,8 @@ export async function listLLMModels(): Promise<ModelsResponse> {
   assertApiKey();
 
   const url =
-    ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0
-      ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/models`
+    ENV.forgeApiUrl
+      ? `${providerBaseUrl(ENV.forgeApiUrl)}/v1/models`
       : "https://forge.manus.im/v1/models";
 
   const controller = new AbortController();
