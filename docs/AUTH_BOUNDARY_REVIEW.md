@@ -35,3 +35,13 @@ validation is still required.
 Local tests exercise real loopback HTTP success, redirect refusal, malformed and
 oversized bodies, non-success status, request bounds, pending-request deadline,
 schema rejection and SDK project binding. No real OAuth provider was contacted.
+
+## History response correction
+
+History listing validates stored result fields against the accepted write schema,
+checks stored boolean flags/timestamps, caps stored JSON parsing, and returns only
+an explicit public projection. Raw JSON and internal owner fields no longer leak
+through object spreading. Invalid rows are omitted with a visible warning; the raw
+page cursor is retained. A rendered-component regression verifies the Next button
+stays enabled on an all-corrupt page. Delete-all resets pagination and search input
+matches the API's 64-character limit.

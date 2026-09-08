@@ -108,3 +108,33 @@ describe("scan history listing reliability", () => {
     expect(result.omittedCorruptRecords).toBe(3);
   });
 });
+
+
+describe("history output contract", () => {
+  it("does not return raw stored JSON, internal owner IDs or unknown fields", async () => {
+    mockedGetDb.mockResolvedValueOnce(databaseFor([record({
+      measurementJson: JSON.stringify({ kind: "unavailable", metadataConfirmed: false, limitation: "test", private: "hidden-payload" }),
+      internalField: "hidden-internal",
+    })]) as never);
+    const result = await caller().list({});
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).not.toHaveProperty("measurementJson");
+    expect(result.items[0]).not.toHaveProperty("warningsJson");
+    expect(result.items[0]).not.toHaveProperty("userId");
+    expect(JSON.stringify(result)).not.toContain("hidden-");
+  });
+  it.each([
+    { confidenceScore: "1.5" }, { confidenceScore: "-0.1" }, { confidenceScore: "" },
+    { calibrated: 2 }, { manualReviewRecommended: -1 }, { status: "invented" },
+    { createdAt: new Date("invalid") }, { measurementJson: "x".repeat(32769) },
+  ])("omits invalid stored values %o", async overrides => {
+    mockedGetDb.mockResolvedValueOnce(databaseFor([record(overrides)]) as never);
+    await expect(caller().list({})).resolves.toMatchObject({ items: [], omittedCorruptRecords: 1 });
+  });
+  it("advances the raw-page cursor when every visible row is corrupt", async () => {
+    mockedGetDb.mockResolvedValueOnce(databaseFor([
+      record({ id: 12, warningsJson: "bad" }), record({ id: 11, warningsJson: "bad" }), record({ id: 10 }),
+    ]) as never);
+    await expect(caller().list({ limit: 2 })).resolves.toEqual({ items: [], omittedCorruptRecords: 2, nextCursor: 11 });
+  });
+});

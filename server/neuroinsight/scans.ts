@@ -18,6 +18,7 @@ const historyUnavailable = (): never => {
 
 const parseStoredJson = <T>(value: string, schema: z.ZodType<T>): T | undefined => {
   try {
+    if (typeof value !== "string" || value.length > 32768) return undefined;
     const parsed = schema.safeParse(JSON.parse(value));
     return parsed.success ? parsed.data : undefined;
   } catch {
@@ -42,17 +43,30 @@ export const scansRouter = router({
         const measurement = parseStoredJson(record.measurementJson, measurementSchema);
         const warnings = parseStoredJson(record.warningsJson, warningsSchema);
         const confidenceScore = record.confidenceScore === null ? null : Number(record.confidenceScore);
-        if (!measurement || !warnings || (confidenceScore !== null && !Number.isFinite(confidenceScore))) {
+        const result = scanResultSchema.safeParse({
+          ...record,
+          confidenceScore: confidenceScore ?? undefined,
+          predictedClass: record.predictedClass ?? undefined,
+          uncertaintyReason: record.uncertaintyReason ?? undefined,
+          calibrated: record.calibrated === 1,
+          manualReviewRecommended: record.manualReviewRecommended === 1,
+          measurement, warnings,
+        });
+        if (!result.success || ![0, 1].includes(record.calibrated) ||
+            ![0, 1].includes(record.manualReviewRecommended) ||
+            (record.confidenceScore !== null && String(record.confidenceScore).trim() === "") ||
+            !Number.isSafeInteger(record.id) || record.id <= 0 ||
+            !(record.createdAt instanceof Date) || !Number.isFinite(record.createdAt.getTime())) {
           omittedCorruptRecords += 1;
           return [];
         }
         return [{
-          ...record,
-          confidenceScore,
-          calibrated: Boolean(record.calibrated),
-          manualReviewRecommended: Boolean(record.manualReviewRecommended),
-          measurement,
-          warnings,
+          ...result.data,
+          id: record.id,
+          createdAt: record.createdAt,
+          confidenceScore: result.data.confidenceScore ?? null,
+          predictedClass: result.data.predictedClass ?? null,
+          uncertaintyReason: result.data.uncertaintyReason ?? null,
           artifacts: artifacts
             .filter(artifact => artifact.scanRecordId === record.id && !artifact.storageKey.startsWith("pending:"))
             .map(artifact => ({ id: artifact.id, artifactType: artifact.artifactType, contentType: artifact.contentType, createdAt: artifact.createdAt })),
