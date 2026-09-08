@@ -55,3 +55,20 @@ headers remain present. Tests exercise actual Express HTTP requests and verify
 successful API and SPA paths continue working. Browser query/mutation failures
 log fixed operation labels only; the existing unauthorized login transition is
 preserved and tested. Both new error modules join the coverage gate.
+
+## Managed-storage transport correction
+
+Storage control URLs require credential-free HTTPS and reject query strings,
+fragments, whitespace and backslashes before sending the bearer token. Signed
+object URLs allow signature queries but reject fragments and credentials. All
+storage fetches refuse redirects, signing responses are capped at 64 KiB during
+streaming, and network/parse failures omit provider details. Discarded response
+bodies are cancelled and reader locks released. Object keys are capped at the
+512-character database contract. Existing 10/30-second deadlines remain active.
+
+This does not fix artifact registration's object/database atomicity gap. Durable
+upload-intent and cleanup bookkeeping, immutable attempt keys, transactional
+metadata replacement and ambiguous-commit recovery are still required. A simple
+catch-and-delete is unsafe: the database may have committed before the client
+received an error. Provider deletion and recovery must be integration-tested
+before making durability or physical-erasure guarantees.

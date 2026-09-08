@@ -106,4 +106,42 @@ describe("managed storage lifecycle", () => {
       "Storage download service returned an invalid URL",
     );
   });
+  it.each(["http://forge.example", "https://user:pass@forge.example", "https://forge.example#fragment", "https://forge.example?query=x"])("rejects unsafe credential-bearing provider base %s before fetch", async base => {
+    ENV.forgeApiUrl = base;
+    const fetchMock = vi.fn(); vi.stubGlobal("fetch", fetchMock);
+    await expect(storageDelete("owned/report.pdf")).rejects.toThrow();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("sets redirect refusal on signing, upload and deletion calls", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ url: "https://object.example/upload" })))
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await storagePutStable("owned/report.pdf", Buffer.from("%PDF"));
+    await storageDelete("owned/report.pdf");
+    for (const [, options] of fetchMock.mock.calls) expect(options.redirect).toBe("error");
+  });
+
+  it.each(["declared", "streamed", "malformed"])("bounds %s control responses", async kind => {
+    const response = kind === "declared" ? new Response("{}", { headers: { "content-length": "65537" } }) :
+      new Response(kind === "streamed" ? JSON.stringify({ private: "x".repeat(65537) }) : "{private-detail");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
+    await expect(storageGetSignedUrl("owned/report.pdf")).rejects.toThrow(/^Storage provider returned an invalid response$/);
+    expect(response.body?.locked).toBe(false);
+  });
+
+  it("sanitizes network and redirect errors without returning their cause", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("secret-provider-url")));
+    const error = await storageDelete("owned/report.pdf").catch(error => error);
+    expect(error.message).toBe("Storage provider request failed");
+    expect(error.cause).toBeUndefined();
+  });
+
+  it("rejects fragments in signed object URLs", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ url: "https://object.example/report.pdf#private" }))));
+    await expect(storageGetSignedUrl("owned/report.pdf")).rejects.toThrow("invalid URL");
+  });
+
 });
