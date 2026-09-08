@@ -29,6 +29,13 @@
       "when": 1787761867993,
       "tag": "0003_quick_catseye",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1788884354472,
+      "tag": "0004_equal_captain_flint",
+      "breakpoints": true
     }
   ]
 }

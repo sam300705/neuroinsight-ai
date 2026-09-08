@@ -58,3 +58,44 @@ export const scanArtifacts = mysqlTable("scan_artifacts", {
 export type ScanRecord = typeof scanRecords.$inferSelect;
 export type InsertScanRecord = typeof scanRecords.$inferInsert;
 export type ScanArtifact = typeof scanArtifacts.$inferSelect;
+
+/**
+ * Durable intent and cleanup bookkeeping for artifact lifecycle management.
+ * Allows safe recovery from ambiguous database commits and protects against concurrent races.
+ */
+export const scanArtifactIntents = mysqlTable("scan_artifact_intents", {
+  id: varchar("id", { length: 64 }).primaryKey(), // Unique operation ID
+  scanRecordId: int("scanRecordId").notNull().references(() => scanRecords.id, { onDelete: "cascade" }),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  artifactType: mysqlEnum("artifactType", ["report", "grad_cam", "segmentation_mask", "three_dimensional"]).notNull(),
+
+  // The immutable object key that this intent is attempting to upload or clean up
+  storageKey: varchar("storageKey", { length: 512 }).notNull(),
+
+  // Clean up the displaced storage key when replacing an artifact
+  displacedStorageKey: varchar("displacedStorageKey", { length: 512 }),
+
+  // "pending": Upload intent recorded but not yet committed
+  // "committed": Transaction committed the metadata change, cleanup can proceed
+  // "cancelled": Upload failed or cancelled, unreferenced storage key must be cleaned up
+  state: mysqlEnum("state", ["pending", "committed", "cancelled"]).notNull(),
+
+  // Expected artifact revision or concurrency token (useful for CAS or ordering)
+  expectedRevision: int("expectedRevision"),
+
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+
+  // True if the associated physical artifacts have been successfully deleted from storage
+  cleanupComplete: int("cleanupComplete").notNull().default(0),
+
+  // Number of retry attempts for cleanup or reconciliation
+  retryCount: int("retryCount").notNull().default(0),
+}, table => [
+  index("scan_artifact_intents_scan_idx").on(table.scanRecordId),
+  index("scan_artifact_intents_user_idx").on(table.userId),
+  index("scan_artifact_intents_state_cleanup_idx").on(table.state, table.cleanupComplete),
+]);
+
+export type ScanArtifactIntent = typeof scanArtifactIntents.$inferSelect;
+export type InsertScanArtifactIntent = typeof scanArtifactIntents.$inferInsert;
