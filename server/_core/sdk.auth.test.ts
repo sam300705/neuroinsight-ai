@@ -121,3 +121,40 @@ describe("session application binding", () => {
     await expect(dashboard.verifySession(token)).resolves.toBeNull();
   });
 });
+
+
+describe("session expiry and provider identity invariants", () => {
+  const secret = "t".repeat(32);
+  const makeService = () => new SDKServer({ post: vi.fn() } as never,
+    { appId: "app", secret, production: true });
+
+  it.each(["missing", "too-long", "before-issue", "fractional"])(
+    "rejects %s expiration even with a valid signature", async kind => {
+      const now = Math.floor(Date.now() / 1000);
+      let token = new SignJWT({ openId: "user", appId: "app", name: "User" })
+        .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+        .setIssuer(SESSION_TOKEN_ISSUER).setAudience("app").setIssuedAt(now);
+      if (kind !== "missing") token = token.setExpirationTime(
+        kind === "too-long" ? now + 8 * 86400 :
+        kind === "before-issue" ? now - 1 : now + 60.5);
+      await expect(makeService().verifySession(
+        await token.sign(new TextEncoder().encode(secret)))).resolves.toBeNull();
+    });
+
+  it.each([
+    ["user", "other-user", "app"],
+    ["user", "user", "other-app"],
+    ["cron_task", "cron_other", "app"],
+    ["cron_task", "cron_task", "other-app"],
+  ])("rejects provider mismatch for %s / %s / %s before persistence", async (openId, providerId, projectId) => {
+    const service = makeService();
+    vi.spyOn(service, "verifySession").mockResolvedValue({ openId, appId: "app", name: "User" });
+    vi.spyOn(db, "getUserByOpenId").mockResolvedValue(undefined);
+    const upsert = vi.spyOn(db, "upsertUser").mockResolvedValue();
+    vi.spyOn(service, "getUserInfoWithJwt").mockResolvedValue({
+      openId: providerId, projectId, name: "User", taskUid: "task",
+    });
+    await expect(service.authenticateRequest({ headers: {} } as Request)).rejects.toThrow();
+    expect(upsert).not.toHaveBeenCalled();
+  });
+});

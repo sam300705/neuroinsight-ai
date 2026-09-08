@@ -252,6 +252,7 @@ export class SDKServer {
       const secretKey = this.getSessionSecret();
       const expectedAppId = this.getSessionAppId();
       const { payload } = await jwtVerify(cookieValue, secretKey, {
+        requiredClaims: ["exp", "iat", "iss", "aud"],
         algorithms: ["HS256"],
         typ: "JWT",
         issuer: SESSION_TOKEN_ISSUER,
@@ -259,7 +260,12 @@ export class SDKServer {
         maxTokenAge: SESSION_MAX_AGE_SECONDS,
         clockTolerance: SESSION_CLOCK_TOLERANCE_SECONDS,
       });
-      const { openId, appId, name } = payload as Record<string, unknown>;
+      const { openId, appId, name, iat, exp } = payload;
+      if (
+        !Number.isSafeInteger(iat) || !Number.isSafeInteger(exp) ||
+        (exp as number) <= (iat as number) ||
+        (exp as number) - (iat as number) > SESSION_MAX_AGE_SECONDS
+      ) return null;
 
       if (
         !isNonEmptyString(openId) ||
@@ -332,6 +338,9 @@ export class SDKServer {
 
     if (session.openId.startsWith(CRON_OPEN_ID_PREFIX)) {
       const userInfo = await this.getUserInfoWithJwt(sessionToken ?? "");
+      if (userInfo.openId !== session.openId || userInfo.projectId !== session.appId) {
+        throw ForbiddenError("OAuth identity does not match session");
+      }
       const taskUid = userInfo.taskUid ?? null;
       if (!taskUid) {
         throw ForbiddenError("Cron session missing task_uid");
@@ -347,6 +356,9 @@ export class SDKServer {
     if (!user) {
       try {
         const userInfo = await this.getUserInfoWithJwt(sessionToken ?? "");
+        if (userInfo.openId !== session.openId || userInfo.projectId !== session.appId) {
+          throw ForbiddenError("OAuth identity does not match session");
+        }
         await db.upsertUser({
           openId: userInfo.openId,
           name: userInfo.name || null,
