@@ -6,17 +6,18 @@ import { AnalysisProvider } from "@/contexts/AnalysisContext";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import Home from "@/pages/Home";
 import { lazy, Suspense } from "react";
+import { retryRouteImport } from "@/lib/routeImport";
 import { Route, Switch } from "wouter";
 
-const Analyse = lazy(() => import("@/pages/Analyse"));
-const Results = lazy(() => import("@/pages/Results"));
-const History = lazy(() => import("@/pages/History"));
-const Methodology = lazy(() => import("@/pages/Methodology"));
-const Performance = lazy(() => import("@/pages/Performance"));
-const Limitations = lazy(() => import("@/pages/Limitations"));
-const About = lazy(() => import("@/pages/About"));
-const ResponsibleUse = lazy(() => import("@/pages/ResponsibleUse"));
-const NotFound = lazy(() => import("@/pages/NotFound"));
+const Analyse = lazy(() => retryRouteImport(() => import("@/pages/Analyse")));
+const Results = lazy(() => retryRouteImport(() => import("@/pages/Results")));
+const History = lazy(() => retryRouteImport(() => import("@/pages/History")));
+const Methodology = lazy(() => retryRouteImport(() => import("@/pages/Methodology")));
+const Performance = lazy(() => retryRouteImport(() => import("@/pages/Performance")));
+const Limitations = lazy(() => retryRouteImport(() => import("@/pages/Limitations")));
+const About = lazy(() => retryRouteImport(() => import("@/pages/About")));
+const ResponsibleUse = lazy(() => retryRouteImport(() => import("@/pages/ResponsibleUse")));
+const NotFound = lazy(() => retryRouteImport(() => import("@/pages/NotFound")));
 
 function RouteLoading() {
   return <div className="mx-auto max-w-6xl px-4 py-10" role="status" aria-live="polite"><p className="text-sm text-slate-600">Loading research workspace…</p></div>;

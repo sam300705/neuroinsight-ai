@@ -25,6 +25,8 @@ export default defineConfig({
         "server/_core/csrf.ts",
         "server/_core/oauthBoundary.ts",
         "server/_core/providerTransport.ts",
+        "server/_core/staticAssets.ts",
+        "client/src/lib/routeImport.ts",
         "client/src/lib/apiErrorPolicy.ts",
         "server/_core/httpErrors.ts",
         "server/_core/httpSecurity.ts",
