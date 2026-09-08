@@ -18,6 +18,7 @@ export const encodeOAuthState = (state: OAuthState): string =>
   btoa(JSON.stringify(state));
 
 export const decodeOAuthState = (state: string): OAuthState => {
+  if (state.length > 8192) return { redirectUri: "" };
   let decoded: string;
   try {
     decoded = atob(state);
@@ -29,7 +30,10 @@ export const decodeOAuthState = (state: string): OAuthState => {
   }
   try {
     const parsed = JSON.parse(decoded);
-    if (parsed && typeof parsed.redirectUri === "string") return parsed;
+    if (parsed && typeof parsed.redirectUri === "string" && parsed.redirectUri.length <= 2048 &&
+        typeof parsed.nonce === "string" && parsed.nonce.length >= 16 && parsed.nonce.length <= 128) {
+      return { redirectUri: parsed.redirectUri, nonce: parsed.nonce };
+    }
   } catch {
     // Legacy links: `state` was a bare base64(redirectUri) with no nonce.
   }

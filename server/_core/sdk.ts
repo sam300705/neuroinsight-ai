@@ -1,5 +1,4 @@
 import {
-  AXIOS_TIMEOUT_MS,
   COOKIE_NAME,
   SESSION_MAX_AGE_MS,
   decodeOAuthState,
@@ -14,6 +13,7 @@ import * as db from "../db";
 import { sessionApplicationId, sessionSecretBytes } from "./authConfig";
 import { ENV } from "./env";
 import { safeErrorMetadata } from "./safeError";
+import { oauthBaseUrl, oauthCredential, oauthPost, oauthTokenSchema, oauthUserSchema } from "./oauthBoundary";
 import type {
   ExchangeTokenRequest,
   ExchangeTokenResponse,
@@ -45,16 +45,14 @@ const SESSION_MAX_AGE_SECONDS = Math.ceil(SESSION_MAX_AGE_MS / 1000);
 const SESSION_CLOCK_TOLERANCE_SECONDS = 5;
 
 class OAuthService {
-  constructor(private client: ReturnType<typeof axios.create>) {
-    if (!ENV.oAuthServerUrl) {
-      console.error(
-        "[OAuth] ERROR: OAUTH_SERVER_URL is not configured! Set OAUTH_SERVER_URL environment variable."
-      );
-    }
-  }
+  constructor(private client: AxiosInstance, private appId: string) {}
 
   private decodeState(state: string): string {
-    return decodeOAuthState(state).redirectUri;
+    const decoded = decodeOAuthState(state);
+    if (!decoded.nonce) throw new Error("Invalid OAuth state.");
+    const redirectUri = oauthBaseUrl(decoded.redirectUri, ENV.isProduction);
+    if (new URL(redirectUri).pathname !== "/api/oauth/callback") throw new Error("Invalid OAuth callback.");
+    return redirectUri;
   }
 
   async getTokenByCode(
@@ -62,39 +60,27 @@ class OAuthService {
     state: string
   ): Promise<ExchangeTokenResponse> {
     const payload: ExchangeTokenRequest = {
-      clientId: ENV.appId,
+      clientId: this.appId,
       grantType: "authorization_code",
-      code,
+      code: oauthCredential.parse(code),
       redirectUri: this.decodeState(state),
     };
 
-    const { data } = await this.client.post<ExchangeTokenResponse>(
-      EXCHANGE_TOKEN_PATH,
-      payload
-    );
-
-    return data;
+    return oauthPost(this.client, ENV.oAuthServerUrl, ENV.isProduction,
+      EXCHANGE_TOKEN_PATH, payload, oauthTokenSchema);
   }
 
   async getUserInfoByToken(
     token: ExchangeTokenResponse
-  ): Promise<GetUserInfoResponse> {
-    const { data } = await this.client.post<GetUserInfoResponse>(
-      GET_USER_INFO_PATH,
-      {
-        accessToken: token.accessToken,
-      }
-    );
-
+  ) {
+    const data = await oauthPost(this.client, ENV.oAuthServerUrl, ENV.isProduction,
+      GET_USER_INFO_PATH, { accessToken: oauthCredential.parse(token.accessToken) }, oauthUserSchema);
+    if (data.projectId !== this.appId) throw new Error("OAuth application identity mismatch.");
     return data;
   }
 }
 
-const createOAuthHttpClient = (): AxiosInstance =>
-  axios.create({
-    baseURL: ENV.oAuthServerUrl,
-    timeout: AXIOS_TIMEOUT_MS,
-  });
+const createOAuthHttpClient = (): AxiosInstance => axios.create();
 
 export class SDKServer {
   private readonly client: AxiosInstance;
@@ -109,7 +95,7 @@ export class SDKServer {
     }
   ) {
     this.client = client;
-    this.oauthService = new OAuthService(this.client);
+    this.oauthService = new OAuthService(this.client, this.sessionConfiguration.appId);
   }
 
   private deriveLoginMethod(
@@ -156,11 +142,11 @@ export class SDKServer {
       accessToken,
     } as ExchangeTokenResponse);
     const loginMethod = this.deriveLoginMethod(
-      (data as any)?.platforms,
-      (data as any)?.platform ?? data.platform ?? null
+      data.platforms,
+      data.platform ?? null
     );
     return {
-      ...(data as any),
+      ...data,
       platform: loginMethod,
       loginMethod,
     } as GetUserInfoResponse;
@@ -243,7 +229,7 @@ export class SDKServer {
   async verifySession(
     cookieValue: string | undefined | null
   ): Promise<{ openId: string; appId: string; name: string } | null> {
-    if (!cookieValue) {
+    if (!cookieValue || cookieValue.length > 16384) {
       console.warn("[Auth] Missing session cookie");
       return null;
     }
@@ -295,21 +281,20 @@ export class SDKServer {
     jwtToken: string
   ): Promise<GetUserInfoWithJwtResponse> {
     const payload: GetUserInfoWithJwtRequest = {
-      jwtToken,
-      projectId: ENV.appId,
+      jwtToken: oauthCredential.parse(jwtToken),
+      projectId: this.getSessionAppId(),
     };
 
-    const { data } = await this.client.post<GetUserInfoWithJwtResponse>(
-      GET_USER_INFO_WITH_JWT_PATH,
-      payload
-    );
+    const data = await oauthPost(this.client, ENV.oAuthServerUrl, ENV.isProduction,
+      GET_USER_INFO_WITH_JWT_PATH, payload, oauthUserSchema);
+    if (data.projectId !== this.getSessionAppId()) throw new Error("OAuth application identity mismatch.");
 
     const loginMethod = this.deriveLoginMethod(
-      (data as any)?.platforms,
-      (data as any)?.platform ?? data.platform ?? null
+      data.platforms,
+      data.platform ?? null
     );
     return {
-      ...(data as any),
+      ...data,
       platform: loginMethod,
       loginMethod,
     } as GetUserInfoWithJwtResponse;

@@ -21,7 +21,7 @@ export function registerOAuthRoutes(app: Express) {
     const code = getQueryParam(req, "code");
     const state = getQueryParam(req, "state");
 
-    if (!code || !state) {
+    if (!code || !state || code.length > 8192 || state.length > 8192) {
       res.status(400).json({ error: "code and state are required" });
       return;
     }
