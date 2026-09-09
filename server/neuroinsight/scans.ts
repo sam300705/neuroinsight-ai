@@ -3,7 +3,7 @@ import { scanArtifactIntents, scanArtifacts, scanRecords } from "../../drizzle/s
 import { getDb } from "../db";
 import { storageDelete, storageGetSignedUrl, storagePutStable } from "../storage";
 import { artifactRegistrationSchema, measurementSchema, scanResultSchema, validateArtifactPayload, warningsSchema } from "./validation";
-import { deleteAllOwnedScans, deleteOwnedScan, issueOwnedArtifactDownload, ArtifactIntent } from "./artifactLifecycle";
+import { deleteAllOwnedScans, deleteOwnedScan, issueOwnedArtifactDownload, ArtifactIntent, DbTx, OwnedArtifact } from "./artifactLifecycle";
 import { ACTIVE_HISTORY_MODE, historyListInputSchema } from "./historyPolicy";
 import { protectedProcedure, router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
@@ -106,22 +106,17 @@ export const scansRouter = router({
     const db = await getDb();
     if (!db) throw new Error("Scan history database is unavailable.");
 
-    // A. Validate ownership and create durable intent
+    // Validate ownership before starting
     const [record] = await db.select().from(scanRecords).where(and(eq(scanRecords.userId, ctx.user.id), eq(scanRecords.scanId, input.scanId))).limit(1);
     if (!record) throw new Error("Scan record was not found for this user.");
 
     const bytes = validateArtifactPayload(input.base64, input.contentType);
 
-    // Find existing artifact to displace
-    const [existing] = await db.select({ id: scanArtifacts.id, storageKey: scanArtifacts.storageKey })
-      .from(scanArtifacts)
-      .where(and(eq(scanArtifacts.scanRecordId, record.id), eq(scanArtifacts.artifactType, input.artifactType)))
-      .limit(1);
-
     const intentId = crypto.randomUUID();
     const extension = input.artifactType === "report" ? "pdf" : "png";
     const attemptSuffix = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-    const attemptStorageKey = `neuroinsight/${ctx.user.id}/${input.scanId}/${input.artifactType}_${attemptSuffix}.${extension}`;
+    // Use full intentId UUID + operation ID suffix
+    const attemptStorageKey = `neuroinsight/${ctx.user.id}/${input.scanId}/${input.artifactType}_${intentId}_${attemptSuffix}.${extension}`;
 
     await db.insert(scanArtifactIntents).values({
       id: intentId,
@@ -129,7 +124,7 @@ export const scansRouter = router({
       userId: ctx.user.id,
       artifactType: input.artifactType,
       storageKey: attemptStorageKey,
-      displacedStorageKey: existing ? existing.storageKey : null,
+      displacedStorageKey: null,
       state: "pending",
       cleanupComplete: 0,
       retryCount: 0,
@@ -138,11 +133,12 @@ export const scansRouter = router({
     let uploadSuccess = false;
     let stored: { key: string; url: string } | null = null;
     try {
-      // B. Upload to immutable attempt key outside the transaction
       stored = await storagePutStable(attemptStorageKey, bytes, input.contentType);
+      if (stored.key !== attemptStorageKey) {
+        throw new Error("Provider returned unexpected storage key");
+      }
       uploadSuccess = true;
     } catch (error) {
-      // Intent remains pending/cancelled; cleanup process will handle unreferenced key
       try {
         await db.update(scanArtifactIntents).set({ state: "cancelled" }).where(eq(scanArtifactIntents.id, intentId));
       } catch {
@@ -155,59 +151,57 @@ export const scansRouter = router({
        throw new Error("Artifact upload failed.");
     }
 
-    // C. In a short transaction: finalization
     let transactionSuccess = false;
+    let actualDisplacedKey: string | null = null;
     try {
       await db.transaction(async (tx) => {
-        // Re-check scan still exists FOR UPDATE
-        const [checkRecord] = await tx.select({ id: scanRecords.id }).from(scanRecords).where(eq(scanRecords.id, record.id)).for("update").limit(1);
-        if (!checkRecord) {
-           throw new Error("Scan was deleted during upload.");
-        }
+        // @ts-ignore
+        const [checkRecord] = await (tx.select({ id: scanRecords.id }).from(scanRecords).where(eq(scanRecords.id, record.id)) as any).for("update").limit(1);
+        if (!checkRecord) throw new Error("Scan was deleted during upload.");
 
-        // Ensure intent hasn't been cancelled by a concurrent cleanup
-        const [checkIntent] = await tx.select({ state: scanArtifactIntents.state }).from(scanArtifactIntents).where(eq(scanArtifactIntents.id, intentId)).for("update").limit(1);
-        if (checkIntent?.state === "cancelled") {
-           throw new Error("Upload was cancelled.");
-        }
+        // @ts-ignore
+        const [checkIntent] = await (tx.select({ state: scanArtifactIntents.state }).from(scanArtifactIntents).where(eq(scanArtifactIntents.id, intentId)) as any).for("update").limit(1);
+        if (checkIntent?.state === "cancelled") throw new Error("Upload was cancelled.");
 
-        // Publish new active pointer
+        // Read ACTUAL current pointer under the shared lock
+        // @ts-ignore
+        const [existing] = await (tx.select({ storageKey: scanArtifacts.storageKey }).from(scanArtifacts).where(and(eq(scanArtifacts.scanRecordId, record.id), eq(scanArtifacts.artifactType, input.artifactType))) as any).for("update").limit(1);
+
+        actualDisplacedKey = existing ? existing.storageKey : null;
+
         await tx.insert(scanArtifacts).values({
           scanRecordId: record.id,
           artifactType: input.artifactType,
-          storageKey: stored.key,
+          storageKey: stored!.key,
           storageUrl: "ownership-scoped-download-only",
           contentType: input.contentType
         }).onDuplicateKeyUpdate({
           set: {
-            storageKey: stored.key,
+            storageKey: stored!.key,
             storageUrl: "ownership-scoped-download-only",
             contentType: input.contentType
           }
         });
 
-        // Mark intent committed
-        await tx.update(scanArtifactIntents).set({ state: "committed" }).where(eq(scanArtifactIntents.id, intentId));
+        await tx.update(scanArtifactIntents)
+          .set({ state: "committed", displacedStorageKey: actualDisplacedKey })
+          .where(eq(scanArtifactIntents.id, intentId));
       });
       transactionSuccess = true;
     } catch (error) {
-      // Ambiguous commit could happen here if network drops but DB commits.
-      // Reconciler will handle it.
       throw new Error("Failed to finalize artifact registration.");
     }
 
-    // D. Perform eligible cleanup outside transaction
-    if (transactionSuccess && existing && existing.storageKey !== attemptStorageKey) {
-       // Best effort cleanup inline, otherwise offline reconciler gets it
+    if (transactionSuccess && actualDisplacedKey && actualDisplacedKey !== attemptStorageKey) {
        try {
-         await storageDelete(existing.storageKey);
+         await storageDelete(actualDisplacedKey);
          await db.update(scanArtifactIntents).set({ cleanupComplete: 1 }).where(eq(scanArtifactIntents.id, intentId));
        } catch (err) {
          // ignore
        }
     }
 
-    return { artifactType: input.artifactType, contentType: input.contentType, existing: Boolean(existing), pending: false };
+    return { artifactType: input.artifactType, contentType: input.contentType, existing: Boolean(actualDisplacedKey), pending: false };
   }),
 
   getArtifactDownload: protectedProcedure.input(z.object({ artifactId: z.number().int().positive() })).query(async ({ ctx, input }) => {
@@ -229,15 +223,15 @@ export const scansRouter = router({
 
   deleteOne: protectedProcedure.input(z.object({ scanId: z.string().uuid() })).mutation(async ({ ctx, input }) => {
     const db = await getDb(); if (!db) throw new Error("Scan history database is unavailable.");
+
     return deleteOwnedScan(ctx.user.id, input.scanId, {
       findOwnedScan: async (userId, scanId, tx) => {
         const execDb = tx || db;
-        // Lock for update to protect against concurrent registration
-        const query = execDb.select({ id: scanRecords.id }).from(scanRecords).where(and(eq(scanRecords.userId, userId), eq(scanRecords.scanId, scanId))).limit(1);
-        if (tx) query.for("update");
-        const [record] = await query;
+        // @ts-ignore
+        const record = tx ? (await (tx.select({ id: scanRecords.id }).from(scanRecords).where(and(eq(scanRecords.userId, userId), eq(scanRecords.scanId, scanId))) as any).for("update").limit(1))[0] : (await execDb.select({ id: scanRecords.id }).from(scanRecords).where(and(eq(scanRecords.userId, userId), eq(scanRecords.scanId, scanId))).limit(1))[0];
         if (!record) return undefined;
-        const artifacts = await execDb.select({ id: scanArtifacts.id, storageKey: scanArtifacts.storageKey, artifactType: scanArtifacts.artifactType }).from(scanArtifacts).where(eq(scanArtifacts.scanRecordId, record.id));
+        // @ts-ignore
+        const artifacts = tx ? await (tx.select({ id: scanArtifacts.id, storageKey: scanArtifacts.storageKey, artifactType: scanArtifacts.artifactType }).from(scanArtifacts).where(eq(scanArtifacts.scanRecordId, record.id)) as any).for("update") : await execDb.select({ id: scanArtifacts.id, storageKey: scanArtifacts.storageKey, artifactType: scanArtifacts.artifactType }).from(scanArtifacts).where(eq(scanArtifacts.scanRecordId, record.id));
         return { ...record, artifacts };
       },
       deleteStoredArtifact: storageDelete,
@@ -262,42 +256,93 @@ export const scansRouter = router({
       },
       markIntentCleanupComplete: async (intentId) => {
         await db.update(scanArtifactIntents).set({ cleanupComplete: 1 }).where(eq(scanArtifactIntents.id, intentId));
+      },
+      createCleanupIntentsForArtifacts: async (userId, artifacts, tx) => {
+        const execDb = tx || db;
+        const intents: ArtifactIntent[] = [];
+        for (const art of artifacts) {
+          if (art.storageKey.startsWith("pending:")) continue;
+          const intentId = crypto.randomUUID();
+          await execDb.insert(scanArtifactIntents).values({
+            id: intentId,
+            scanRecordId: null, // Detached so it survives scan deletion
+            userId: userId,
+            artifactType: art.artifactType as any,
+            storageKey: art.storageKey,
+            displacedStorageKey: null,
+            state: "cancelled", // Legacy/Active artifacts just need to be deleted
+            cleanupComplete: 0,
+            retryCount: 0,
+          });
+          intents.push({
+            id: intentId, scanRecordId: null, userId, artifactType: art.artifactType as any,
+            storageKey: art.storageKey, displacedStorageKey: null, state: "cancelled", expectedRevision: null, cleanupComplete: 0
+          });
+        }
+        return intents;
       }
     });
   }),
 
   deleteAll: protectedProcedure.input(z.object({ confirmation: z.literal("DELETE_ALL_RESEARCH_HISTORY") })).mutation(async ({ ctx }) => {
     const db = await getDb(); if (!db) throw new Error("Scan history database is unavailable.");
-    return deleteAllOwnedScans(ctx.user.id, {
-      listOwnedScans: async userId => {
+
+    const deps = {
+      listOwnedScans: async (userId: number) => {
         const records = await db.select({ id: scanRecords.id }).from(scanRecords).where(eq(scanRecords.userId, userId));
         if (!records.length) return [];
         const artifacts = await db.select({ id: scanArtifacts.id, scanRecordId: scanArtifacts.scanRecordId, storageKey: scanArtifacts.storageKey, artifactType: scanArtifacts.artifactType }).from(scanArtifacts).where(inArray(scanArtifacts.scanRecordId, records.map(record => record.id)));
         return records.map(record => ({ ...record, artifacts: artifacts.filter(artifact => artifact.scanRecordId === record.id).map(({ scanRecordId: _scanRecordId, ...artifact }) => artifact) }));
       },
       deleteStoredArtifact: storageDelete,
-      deleteArtifactMetadata: async (recordId, tx) => {
+      deleteArtifactMetadata: async (recordId: number, tx: DbTx) => {
         const execDb = tx || db;
         await execDb.delete(scanArtifacts).where(eq(scanArtifacts.scanRecordId, recordId));
       },
-      deleteScanMetadata: async (recordId, tx) => {
+      deleteScanMetadata: async (recordId: number, tx: DbTx) => {
         const execDb = tx || db;
         await execDb.delete(scanRecords).where(eq(scanRecords.id, recordId));
       },
-      runInTransaction: async (callback) => {
+      runInTransaction: async <T>(callback: (tx: DbTx) => Promise<T>) => {
         return await db.transaction(callback);
       },
-      markIntentsCancelled: async (recordId, tx) => {
+      markIntentsCancelled: async (recordId: number, tx: DbTx) => {
         const execDb = tx || db;
         await execDb.update(scanArtifactIntents).set({ state: "cancelled" })
           .where(and(eq(scanArtifactIntents.scanRecordId, recordId), eq(scanArtifactIntents.state, "pending")));
       },
-      listIntentsForScan: async (recordId) => {
+      listIntentsForScan: async (recordId: number) => {
         return (await db.select().from(scanArtifactIntents).where(eq(scanArtifactIntents.scanRecordId, recordId))) as ArtifactIntent[];
       },
-      markIntentCleanupComplete: async (intentId) => {
+      markIntentCleanupComplete: async (intentId: string) => {
         await db.update(scanArtifactIntents).set({ cleanupComplete: 1 }).where(eq(scanArtifactIntents.id, intentId));
+      },
+      createCleanupIntentsForArtifacts: async (userId: number, artifacts: OwnedArtifact[], tx: DbTx) => {
+        const execDb = tx || db;
+        const intents: ArtifactIntent[] = [];
+        for (const art of artifacts) {
+          if (art.storageKey.startsWith("pending:")) continue;
+          const intentId = crypto.randomUUID();
+          await execDb.insert(scanArtifactIntents).values({
+            id: intentId,
+            scanRecordId: null,
+            userId: userId,
+            artifactType: art.artifactType as any,
+            storageKey: art.storageKey,
+            displacedStorageKey: null,
+            state: "cancelled",
+            cleanupComplete: 0,
+            retryCount: 0,
+          });
+          intents.push({
+            id: intentId, scanRecordId: null, userId, artifactType: art.artifactType as any,
+            storageKey: art.storageKey, displacedStorageKey: null, state: "cancelled", expectedRevision: null, cleanupComplete: 0
+          });
+        }
+        return intents;
       }
-    });
+    };
+
+    return deleteAllOwnedScans(ctx.user.id, deps as any);
   }),
 });

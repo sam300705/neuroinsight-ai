@@ -20,7 +20,7 @@ export type InsertUser = typeof users.$inferInsert;
 export const scanRecords = mysqlTable("scan_records", {
   id: int("id").autoincrement().primaryKey(),
   scanId: varchar("scanId", { length: 64 }).notNull(),
-  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  userId: int("userId").notNull(), // Detached from cascade deletion to preserve cleanup bookkeeping
   mode: mysqlEnum("mode", ["classification", "segmentation"]).notNull(),
   status: mysqlEnum("status", ["complete", "low_confidence", "incompatible", "partial", "unavailable"]).notNull(),
   modelVersion: varchar("modelVersion", { length: 128 }).notNull(),
@@ -43,7 +43,7 @@ export const scanRecords = mysqlTable("scan_records", {
 /** Stores only returned S3 key/URL and MIME type for durable derived artifacts. */
 export const scanArtifacts = mysqlTable("scan_artifacts", {
   id: int("id").autoincrement().primaryKey(),
-  scanRecordId: int("scanRecordId").notNull().references(() => scanRecords.id, { onDelete: "cascade" }),
+  scanRecordId: int("scanRecordId").references(() => scanRecords.id, { onDelete: "set null" }),
   artifactType: mysqlEnum("artifactType", ["report", "grad_cam", "segmentation_mask", "three_dimensional"]).notNull(),
   storageKey: varchar("storageKey", { length: 512 }).notNull(),
   storageUrl: varchar("storageUrl", { length: 1024 }).notNull(),
@@ -65,8 +65,8 @@ export type ScanArtifact = typeof scanArtifacts.$inferSelect;
  */
 export const scanArtifactIntents = mysqlTable("scan_artifact_intents", {
   id: varchar("id", { length: 64 }).primaryKey(), // Unique operation ID
-  scanRecordId: int("scanRecordId").notNull().references(() => scanRecords.id, { onDelete: "cascade" }),
-  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  scanRecordId: int("scanRecordId").references(() => scanRecords.id, { onDelete: "set null" }),
+  userId: int("userId").notNull(), // Detached from cascade deletion to preserve cleanup bookkeeping
   artifactType: mysqlEnum("artifactType", ["report", "grad_cam", "segmentation_mask", "three_dimensional"]).notNull(),
 
   // The immutable object key that this intent is attempting to upload or clean up
