@@ -20,7 +20,9 @@ export type InsertUser = typeof users.$inferInsert;
 export const scanRecords = mysqlTable("scan_records", {
   id: int("id").autoincrement().primaryKey(),
   scanId: varchar("scanId", { length: 64 }).notNull(),
-  userId: int("userId").notNull(), // Detached from cascade deletion to preserve cleanup bookkeeping
+  // Cleanup intents are the only rows allowed to outlive their parent. Scan metadata stays
+  // attached to a real account so accidental/direct user deletion fails closed.
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "restrict" }),
   mode: mysqlEnum("mode", ["classification", "segmentation"]).notNull(),
   status: mysqlEnum("status", ["complete", "low_confidence", "incompatible", "partial", "unavailable"]).notNull(),
   modelVersion: varchar("modelVersion", { length: 128 }).notNull(),
@@ -43,7 +45,9 @@ export const scanRecords = mysqlTable("scan_records", {
 /** Stores only returned S3 key/URL and MIME type for durable derived artifacts. */
 export const scanArtifacts = mysqlTable("scan_artifacts", {
   id: int("id").autoincrement().primaryKey(),
-  scanRecordId: int("scanRecordId").references(() => scanRecords.id, { onDelete: "set null" }),
+  // Active artifact metadata must never silently detach from its owning scan. Application
+  // deletion removes the artifact row only after recording a durable cleanup intent.
+  scanRecordId: int("scanRecordId").notNull().references(() => scanRecords.id, { onDelete: "restrict" }),
   artifactType: mysqlEnum("artifactType", ["report", "grad_cam", "segmentation_mask", "three_dimensional"]).notNull(),
   storageKey: varchar("storageKey", { length: 512 }).notNull(),
   storageUrl: varchar("storageUrl", { length: 1024 }).notNull(),
@@ -66,7 +70,7 @@ export type ScanArtifact = typeof scanArtifacts.$inferSelect;
 export const scanArtifactIntents = mysqlTable("scan_artifact_intents", {
   id: varchar("id", { length: 64 }).primaryKey(), // Unique operation ID
   scanRecordId: int("scanRecordId").references(() => scanRecords.id, { onDelete: "set null" }),
-  userId: int("userId").notNull(), // Detached from cascade deletion to preserve cleanup bookkeeping
+  userId: int("userId").notNull(), // Detached intentionally so cleanup can finish after parent deletion
   artifactType: mysqlEnum("artifactType", ["report", "grad_cam", "segmentation_mask", "three_dimensional"]).notNull(),
 
   // The immutable object key that this intent is attempting to upload or clean up
