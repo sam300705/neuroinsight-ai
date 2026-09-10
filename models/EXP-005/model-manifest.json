@@ -1,0 +1,78 @@
+{
+  "schema_version": "neuroinsight-model-manifest/v1",
+  "experiment_id": "EXP-005",
+  "release_status": "active_academic_mode_a",
+  "model_version": "bdneuro-v7-resnet50-head-only-exp005",
+  "task": "four_class_2d_brain_mri_image_classification",
+  "architecture": "resnet50",
+  "runtime": "onnxruntime",
+  "contract": {
+    "image_size": 160,
+    "labels_internal": [
+      "glioma",
+      "meningioma",
+      "notumor",
+      "pituitary"
+    ],
+    "labels_public": [
+      "glioma",
+      "meningioma",
+      "no_tumor",
+      "pituitary"
+    ],
+    "normalization_mean": [0.485, 0.456, 0.406],
+    "normalization_std": [0.229, 0.224, 0.225]
+  },
+  "evaluation": {
+    "scope": "same_dataset_image_level_held_out_only",
+    "accuracy": 0.8099,
+    "macro_f1": 0.808,
+    "weighted_f1": 0.811,
+    "patient_case_disjoint": false,
+    "external_validation": false,
+    "clinical_validation": false
+  },
+  "calibration": {
+    "method": "temperature_scaling_validation_only",
+    "temperature": 0.689875,
+    "abstention_threshold": 0.55,
+    "score_semantics": "experimental_model_confidence_not_medical_probability"
+  },
+  "explainability": {
+    "method": "final_layer_grad_cam",
+    "segmentation": false,
+    "causal_explanation": false
+  },
+  "artifact_integrity": {
+    "strategy": "deployment_supplied_sha256_fail_closed",
+    "required_environment_bindings": [
+      "CLASSIFICATION_ONNX_SHA256",
+      "CLASSIFICATION_ONNX_METADATA_SHA256",
+      "CLASSIFICATION_CALIBRATION_SHA256"
+    ],
+    "note": "Artifact digests are verified by the inference runtime against owner-controlled deployment configuration. This source manifest does not invent or duplicate deployment secret/configuration values."
+  },
+  "promotion_policy": {
+    "automatic_replacement": false,
+    "required_before_replacement": [
+      "audited_data_provenance",
+      "predefined_validation_selection",
+      "locked_test_evaluation",
+      "calibration_evidence",
+      "runtime_contract_validation",
+      "onnx_artifact_integrity",
+      "release_truth_update",
+      "owner_release_decision"
+    ]
+  },
+  "unsupported_claims": [
+    "diagnosis",
+    "patient_level_performance",
+    "external_validation",
+    "clinical_performance",
+    "tumor_boundary",
+    "physical_area",
+    "physical_volume",
+    "treatment_recommendation"
+  ]
+}
