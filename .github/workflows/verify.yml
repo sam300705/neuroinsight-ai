@@ -33,6 +33,10 @@ jobs:
           version: "0.12.13"
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
+      - name: Validate Drizzle migration history
+        env:
+          DATABASE_URL: mysql://ci:ci@127.0.0.1:3306/neuroinsight
+        run: pnpm exec drizzle-kit check
       - run: pnpm test
       - run: pnpm test:coverage
       - run: pnpm build
