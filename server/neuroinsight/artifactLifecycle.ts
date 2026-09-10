@@ -73,6 +73,10 @@ export function assertOwnedStorageKey(userId: number, storageKey: string) {
   }
 }
 
+function isLegacyPendingStorageKey(storageKey: string): boolean {
+  return storageKey.startsWith("pending:");
+}
+
 async function cleanupKnownDeletedArtifacts(
   userId: number,
   intents: ArtifactIntent[],
@@ -92,12 +96,15 @@ async function cleanupKnownDeletedArtifacts(
         // Attached cancelled/pending upload intents are deliberately deferred to the recovery
         // worker so a timed-out provider PUT gets a settle grace period before physical delete.
         if (intent.scanRecordId !== null) continue;
-        assertOwnedStorageKey(intent.userId, intent.storageKey);
-        await deleteStoredArtifact(intent.storageKey);
+        if (!isLegacyPendingStorageKey(intent.storageKey)) {
+          assertOwnedStorageKey(intent.userId, intent.storageKey);
+          await deleteStoredArtifact(intent.storageKey);
+        }
       } else if (
         intent.state === "committed" &&
         intent.displacedStorageKey &&
-        intent.displacedStorageKey !== intent.storageKey
+        intent.displacedStorageKey !== intent.storageKey &&
+        !isLegacyPendingStorageKey(intent.displacedStorageKey)
       ) {
         assertOwnedStorageKey(intent.userId, intent.displacedStorageKey);
         await deleteStoredArtifact(intent.displacedStorageKey);
@@ -117,7 +124,7 @@ export async function issueOwnedArtifactDownload(
 ) {
   const artifact = await dependencies.findOwnedArtifact(userId, artifactId);
   if (!artifact) throw new Error("Artifact was not found for this user.");
-  if (artifact.storageKey.startsWith("pending:")) {
+  if (isLegacyPendingStorageKey(artifact.storageKey)) {
     throw new Error("Artifact upload is incomplete. Please retry saving the result.");
   }
   assertOwnedStorageKey(userId, artifact.storageKey);
@@ -230,12 +237,15 @@ export async function reconcileIntents(
       }
 
       if (currentIntent.state === "cancelled") {
-        assertOwnedStorageKey(currentIntent.userId, currentIntent.storageKey);
-        await dependencies.deleteStoredArtifact(currentIntent.storageKey);
+        if (!isLegacyPendingStorageKey(currentIntent.storageKey)) {
+          assertOwnedStorageKey(currentIntent.userId, currentIntent.storageKey);
+          await dependencies.deleteStoredArtifact(currentIntent.storageKey);
+        }
       } else if (
         currentIntent.state === "committed" &&
         currentIntent.displacedStorageKey &&
-        currentIntent.displacedStorageKey !== currentIntent.storageKey
+        currentIntent.displacedStorageKey !== currentIntent.storageKey &&
+        !isLegacyPendingStorageKey(currentIntent.displacedStorageKey)
       ) {
         assertOwnedStorageKey(currentIntent.userId, currentIntent.displacedStorageKey);
         await dependencies.deleteStoredArtifact(currentIntent.displacedStorageKey);
