@@ -21,6 +21,7 @@
     "test:smoke:inference": "node scripts/verify-inference-endpoint.mjs",
     "release:verify": "node scripts/verify-release-truth.mjs",
     "release:manifest": "node scripts/generate-release-manifest.mjs",
+    "release:bundle": "node scripts/build-reproducibility-bundle.mjs",
     "research:reliability": "tsx scripts/analyze-reliability-bundle.ts",
     "db:push": "drizzle-kit generate && drizzle-kit migrate"
   },
@@ -84,7 +85,7 @@
     "superjson": "^1.13.3",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
-    "vaul": "^1.1.2",
+    "vaul": "^1.2.0",
     "wouter": "^3.3.5",
     "zod": "^4.1.12"
   },
