@@ -42,9 +42,27 @@
     "reason": "No accepted full-volume case-disjoint segmentation model and evaluation evidence is configured."
   },
   "evidence_ledger_version": "neuroinsight-evidence-ledger/2026-09-11",
+  "evidence_graph_version": "neuroinsight-evidence-graph/2026-09-11",
   "research_passport_versions": [
     "neuroinsight-research-passport/v1"
   ],
+  "passport_attestation": {
+    "schema_version": "neuroinsight-passport-attestation/v1",
+    "algorithm": "Ed25519",
+    "status": "conditional",
+    "activation_gate": "Bind the attestation to a verified server analysis receipt and distribute the trusted public key independently before exposing signing as a release capability."
+  },
+  "reliability_tooling": {
+    "status": "available_as_research_tooling",
+    "schema_version": "neuroinsight-reliability-evidence/v1",
+    "metrics": [
+      "expected_calibration_error",
+      "top_label_brier_score",
+      "wilson_accuracy_interval",
+      "risk_coverage_curve"
+    ],
+    "claim_boundary": "Metrics require labeled research-evaluation samples and do not establish robustness, external validity, conformal coverage, or clinical safety."
+  },
   "database_migration_head": "0006_restore_referential_guards",
   "artifact_policy": {
     "raw_upload_persistence": false,
