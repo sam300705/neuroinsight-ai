@@ -101,7 +101,7 @@ export function riskCoverageCurve(
   }
   counts.add(sorted.length);
 
-  return [...counts]
+  return Array.from(counts)
     .sort((a, b) => a - b)
     .map(accepted => {
       const selected = sorted.slice(0, accepted);
