@@ -6,9 +6,11 @@ const read = path => readFileSync(resolve(root, path), "utf8");
 const readJson = path => JSON.parse(read(path));
 const manifest = readJson("release/release-manifest.template.json");
 const protocol = readJson("research/robustness-protocol.json");
+const slos = readJson("release/operational-slos.json");
 const robustness = read("client/src/lib/robustnessEvidence.ts");
 const bundle = read("scripts/build-reproducibility-bundle.mjs");
 const comparison = read("client/src/lib/experimentComparison.ts");
+const fastApi = read("backend/neuroinsight_api/app.py");
 const failures = [];
 const expect = (condition, message) => { if (!condition) failures.push(message); };
 
@@ -33,6 +35,17 @@ expect(comparison.includes(manifest.experiment_comparison?.schema_version), "exp
 expect(comparison.includes("aggregate_model_score: null"), "experiment comparison must not hide evidence dimensions behind an aggregate model score");
 expect(manifest.experiment_comparison?.automatic_promotion === false, "release manifest must prohibit automatic model promotion");
 
+expect(slos.schema_version === manifest.operational_slos?.schema_version, "operational SLO schema differs from release manifest");
+expect(slos.status === manifest.operational_slos?.status, "operational SLO status differs from release manifest");
+expect(slos.telemetry_policy?.opentelemetry_export === "not_configured", "OpenTelemetry export must not be represented as active before a reviewed destination exists");
+expect(Array.isArray(slos.telemetry_policy?.forbidden_dimensions) && slos.telemetry_policy.forbidden_dimensions.includes("raw_image_bytes"), "telemetry policy must prohibit raw imaging bytes");
+expect(slos.telemetry_policy?.forbidden_dimensions?.includes("provider_secret"), "telemetry policy must prohibit provider secrets");
+expect(slos.targets?.every(target => target.state === "target_only"), "SLOs must remain targets until measured over the declared environment/window");
+for (const field of ['"event": "request_completed"', '"duration_ms"', '"request_id"', '"status": response.status_code']) {
+  expect(fastApi.includes(field), `FastAPI structured operational event is missing required field: ${field}`);
+}
+expect(fastApi.includes("Cache-Control") && fastApi.includes("no-store"), "inference responses must retain no-store operational privacy headers");
+
 if (failures.length) {
   console.error("Advanced evidence verification failed:");
   failures.forEach(failure => console.error(`- ${failure}`));
@@ -43,3 +56,4 @@ console.log("Advanced evidence verification passed.");
 console.log(`Robustness: ${manifest.robustness_research.status} / ${manifest.robustness_research.release_state}`);
 console.log(`Reproducibility bundle: ${manifest.reproducibility_bundle.status}`);
 console.log(`Experiment promotion: ${manifest.experiment_comparison.current_decision}; automatic=${manifest.experiment_comparison.automatic_promotion}`);
+console.log(`Operational SLOs: ${manifest.operational_slos.status}; OTEL=${manifest.operational_slos.opentelemetry_export}`);
