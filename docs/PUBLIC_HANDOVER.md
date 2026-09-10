@@ -11,6 +11,8 @@ The existing managed public dashboard is an earlier owner-approved release. PR #
 
 ## Current declared capability
 
+Mode A is a real experimental 2D, four-class brain-MRI image classifier.
+
 | Component | Status | Scope boundary |
 |---|---|---|
 | Mode A EXP-005 classification | Available in verified inference preview | Experimental fixed-split image-level research classification only |
