@@ -44,15 +44,19 @@ jobs:
       - run: pnpm build
       - run: pnpm check:bundle
       - run: pnpm audit --prod --audit-level=high
-      - name: Generate exact-build release manifest
+      - name: Generate exact-build release evidence
         env:
           GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: pnpm release:manifest /tmp/neuroinsight-release-manifest.json
-      - name: Upload release manifest
+        run: |
+          pnpm release:manifest /tmp/neuroinsight-release-manifest.json
+          pnpm release:bundle /tmp/neuroinsight-reproducibility-bundle.json
+      - name: Upload release evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: neuroinsight-release-manifest
-          path: /tmp/neuroinsight-release-manifest.json
+          name: neuroinsight-release-evidence
+          path: |
+            /tmp/neuroinsight-release-manifest.json
+            /tmp/neuroinsight-reproducibility-bundle.json
           if-no-files-found: error
       - name: Install browser for deterministic local UI checks
         run: pnpm exec playwright install --with-deps chromium
