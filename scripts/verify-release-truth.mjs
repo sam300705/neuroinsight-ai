@@ -11,6 +11,7 @@ const expect = (condition, message) => {
 
 const manifest = readJson("release/release-manifest.template.json");
 const modelRegistry = readJson("models/EXP-005/model-manifest.json");
+const experiments = read("EXPERIMENTS.md");
 const modelCard = read("docs/MODEL_CARD.md");
 const capabilityManifest = read("docs/CAPABILITY_MANIFEST.md");
 const evidenceLedger = read("client/src/lib/evidenceLedger.ts");
@@ -47,6 +48,20 @@ expect(modelRegistry.calibration?.abstention_threshold === manifest.mode_a.calib
 expect(modelRegistry.promotion_policy?.automatic_replacement === false, "model registry must prohibit automatic model replacement");
 expect(modelRegistry.evaluation?.external_validation === false, "EXP-005 registry must not claim external validation");
 expect(modelRegistry.evaluation?.patient_case_disjoint === false, "EXP-005 registry must not claim patient/case-disjoint evidence");
+
+for (const phrase of [
+  "EXP-005",
+  "CAL-005",
+  "test accuracy 0.8099",
+  "macro F1 0.8080",
+  "Temperature `0.689875`",
+  "abstention threshold `0.55`",
+  "ECE `0.0885 → 0.0251`",
+  "top-label Brier evidence `0.279 → 0.266`",
+]) {
+  expect(experiments.includes(phrase), `EXPERIMENTS.md is missing canonical release evidence: ${phrase}`);
+}
+expect(!experiments.includes("No calibration method, calibration split, reliability analysis, expected calibration error, Brier score, or abstention threshold was calculated for the classification experiments."), "EXPERIMENTS.md contains the obsolete no-calibration claim");
 
 for (const phrase of [
   "EXP-005",
