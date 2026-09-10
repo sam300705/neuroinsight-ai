@@ -13,6 +13,7 @@ import { createContext } from "./context";
 import { applyHttpSecurityHeaders, HEADERS_TIMEOUT_MS, KEEP_ALIVE_TIMEOUT_MS, MAX_TRPC_BODY_SIZE, REQUEST_TIMEOUT_MS } from "./httpSecurity";
 import { configuredPort, selectServerPort, startupFailureEvent } from "./serverRuntime";
 import { serveStatic, setupVite } from "./vite";
+import { startArtifactReconciliationWorker } from "../neuroinsight/recoveryWorker";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -44,7 +45,6 @@ async function startServer() {
   app.use(express.urlencoded({ limit: MAX_TRPC_BODY_SIZE, extended: true }));
   registerOAuthRoutes(app);
   app.use("/api/trpc", csrfSameOriginGuard);
-  // tRPC API
   app.use(
     "/api/trpc",
     createExpressMiddleware({
@@ -53,7 +53,6 @@ async function startServer() {
     })
   );
   app.use("/api", apiNotFound);
-  // development mode uses Vite, production mode uses static files
   if (process.env.NODE_ENV === "development") {
     await setupVite(app, server);
   } else {
@@ -82,8 +81,13 @@ async function startServer() {
   });
   console.log(`Server running on http://localhost:${port}/`);
 
+  // This is fail-closed: the worker is a no-op unless DB + storage provider config exist.
+  // It never blocks startup and all storage cleanup remains namespace-scoped.
+  const stopArtifactReconciliation = startArtifactReconciliationWorker();
+
   const shutdown = (signal: string) => {
     console.log(`Received ${signal}; closing HTTP server.`);
+    stopArtifactReconciliation();
     server.close(error => process.exit(error ? 1 : 0));
     setTimeout(() => process.exit(1), REQUEST_TIMEOUT_MS).unref();
   };

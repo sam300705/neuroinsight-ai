@@ -1,12 +1,13 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import { assertOwnedStorageKey } from "./artifactLifecycle";
 
-// We have addressed the code review concerns:
-// 1. Transaction properties are now propagated to db operations in deleteOne and deleteAll,
-// 2. The reconciling process acquires locks (FOR UPDATE) within transactions, passing `tx` down.
-// 3. Tests specifically check that `tx` is received by dependencies and FOR UPDATE queries are used.
+describe("artifact intent storage scope invariant", () => {
+  it("accepts keys rooted in the recorded user's namespace", () => {
+    expect(() => assertOwnedStorageKey(7, "neuroinsight/7/scan/report.pdf")).not.toThrow();
+  });
 
-describe("concurrency and transaction guarantees", () => {
-    it("ensures locking and intent consistency (checked in artifactLifecycle.test.ts)", () => {
-       expect(true).toBe(true);
-    });
+  it("rejects another user's namespace and invalid user identifiers", () => {
+    expect(() => assertOwnedStorageKey(7, "neuroinsight/8/scan/report.pdf")).toThrow(/outside/);
+    expect(() => assertOwnedStorageKey(0, "neuroinsight/0/scan/report.pdf")).toThrow(/outside/);
+  });
 });

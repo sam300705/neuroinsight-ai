@@ -1,24 +1,41 @@
 import { describe, expect, it, vi } from "vitest";
-import { deleteAllOwnedScans, deleteOwnedScan, issueOwnedArtifactDownload, reconcileIntents, ArtifactIntent } from "./artifactLifecycle";
+import {
+  ArtifactIntent,
+  deleteAllOwnedScans,
+  deleteOwnedScan,
+  issueOwnedArtifactDownload,
+  reconcileIntents,
+} from "./artifactLifecycle";
+
+const key = (name: string) => `neuroinsight/1/scan-1/${name}`;
 
 describe("artifact lifecycle ownership boundaries", () => {
   it("does not sign a download for an artifact outside the authenticated user scope", async () => {
-    let signerCalls = 0;
+    const signer = vi.fn(async () => "https://example.invalid/signed");
     await expect(issueOwnedArtifactDownload(2, 7, {
       findOwnedArtifact: async () => undefined,
-      createSignedUrl: async () => { signerCalls += 1; return "https://example.invalid/signed"; },
+      createSignedUrl: signer,
     })).rejects.toThrow("Artifact was not found for this user.");
-    expect(signerCalls).toBe(0);
+    expect(signer).not.toHaveBeenCalled();
   });
 
-  it("returns a fresh signed URL only after an owned artifact lookup", async () => {
-    const signedKeys: string[] = [];
+  it("returns a fresh signed URL only for a key inside the authenticated user namespace", async () => {
+    const signer = vi.fn(async () => "https://example.invalid/fresh");
     const result = await issueOwnedArtifactDownload(1, 7, {
-      findOwnedArtifact: async (userId, artifactId) => userId === 1 && artifactId === 7 ? { id: 7, artifactType: "report", storageKey: "neuroinsight/1/scan/report.pdf" } : undefined,
-      createSignedUrl: async key => { signedKeys.push(key); return `https://example.invalid/fresh/${signedKeys.length}`; },
+      findOwnedArtifact: async () => ({ id: 7, artifactType: "report", storageKey: key("report.pdf") }),
+      createSignedUrl: signer,
     });
-    expect(result.storageUrl).toBe("https://example.invalid/fresh/1");
-    expect(signedKeys).toEqual(["neuroinsight/1/scan/report.pdf"]);
+    expect(result.storageUrl).toBe("https://example.invalid/fresh");
+    expect(signer).toHaveBeenCalledWith(key("report.pdf"));
+  });
+
+  it("rejects an owned metadata row whose storage key escaped the user's namespace", async () => {
+    const signer = vi.fn(async () => "https://example.invalid/should-not-run");
+    await expect(issueOwnedArtifactDownload(1, 7, {
+      findOwnedArtifact: async () => ({ id: 7, artifactType: "report", storageKey: "neuroinsight/2/scan/report.pdf" }),
+      createSignedUrl: signer,
+    })).rejects.toThrow("outside the authenticated user scope");
+    expect(signer).not.toHaveBeenCalled();
   });
 
   it("does not sign an incomplete legacy pending artifact", async () => {
@@ -52,40 +69,54 @@ describe("deleteOwnedScan", () => {
     expect(deps.deleteScanMetadata).not.toHaveBeenCalled();
   });
 
-  it("cancels intents and deletes metadata transactionally before best-effort storage cleanup", async () => {
+  it("records durable cleanup before metadata deletion and immediately deletes the known active object", async () => {
     const deps = dummyDependencies();
-    deps.findOwnedScan.mockResolvedValue({ id: 14, artifacts: [{ id: 8, artifactType: "report", storageKey: "neuroinsight/1/scan-1/report.pdf" }] });
-    deps.listIntentsForScan.mockResolvedValue([
-      { id: "intent-1", scanRecordId: 14, userId: 1, artifactType: "report", storageKey: "neuroinsight/1/scan-1/attempt.pdf", displacedStorageKey: "neuroinsight/1/scan-1/report.pdf", state: "cancelled", expectedRevision: null, cleanupComplete: 0 },
-      { id: "intent-2", scanRecordId: null, userId: 1, artifactType: "report", storageKey: "neuroinsight/1/scan-1/report.pdf", displacedStorageKey: null, state: "cancelled", expectedRevision: null, cleanupComplete: 0 }
-    ]);
+    deps.findOwnedScan.mockResolvedValue({
+      id: 14,
+      artifacts: [{ id: 8, artifactType: "report", storageKey: key("report.pdf") }],
+    });
     deps.createCleanupIntentsForArtifacts.mockResolvedValue([{
-      id: "intent-2", scanRecordId: null, userId: 1, artifactType: "report", storageKey: "neuroinsight/1/scan-1/report.pdf", displacedStorageKey: null, state: "cancelled", expectedRevision: null, cleanupComplete: 0
+      id: "cleanup-1",
+      scanRecordId: null,
+      userId: 1,
+      artifactType: "report",
+      storageKey: key("report.pdf"),
+      displacedStorageKey: null,
+      state: "cancelled",
+      expectedRevision: null,
+      cleanupComplete: 0,
     }]);
 
     const result = await deleteOwnedScan(1, "scan-1", deps as any);
 
     expect(result).toEqual({ deleted: true });
+    expect(deps.createCleanupIntentsForArtifacts).toHaveBeenCalledWith(
+      1,
+      [{ id: 8, artifactType: "report", storageKey: key("report.pdf") }],
+      expect.anything(),
+    );
     expect(deps.markIntentsCancelled).toHaveBeenCalledWith(14, expect.anything());
-    expect(deps.createCleanupIntentsForArtifacts).toHaveBeenCalledWith(1, [{ id: 8, artifactType: "report", storageKey: "neuroinsight/1/scan-1/report.pdf" }], expect.anything());
     expect(deps.deleteArtifactMetadata).toHaveBeenCalledWith(14, expect.anything());
     expect(deps.deleteScanMetadata).toHaveBeenCalledWith(14, expect.anything());
-
-    // We expect both the attempted unreferenced artifact and the actual artifact to be cleaned up
-    expect(deps.deleteStoredArtifact).toHaveBeenCalledWith("neuroinsight/1/scan-1/attempt.pdf");
-    expect(deps.deleteStoredArtifact).toHaveBeenCalledWith("neuroinsight/1/scan-1/report.pdf");
+    expect(deps.deleteStoredArtifact).toHaveBeenCalledWith(key("report.pdf"));
+    expect(deps.markIntentCleanupComplete).toHaveBeenCalledWith("cleanup-1");
+    expect(deps.listIntentsForScan).not.toHaveBeenCalled();
   });
 
-  it("swallows storage failures during deletion without rolling back the transaction", async () => {
+  it("leaves durable cleanup incomplete when provider deletion fails", async () => {
     const deps = dummyDependencies();
-    deps.findOwnedScan.mockResolvedValue({ id: 14, artifacts: [{ id: 8, artifactType: "report", storageKey: "neuroinsight/1/scan-1/report.pdf" }] });
+    deps.findOwnedScan.mockResolvedValue({ id: 14, artifacts: [{ id: 8, artifactType: "report", storageKey: key("report.pdf") }] });
+    deps.createCleanupIntentsForArtifacts.mockResolvedValue([{
+      id: "cleanup-1", scanRecordId: null, userId: 1, artifactType: "report",
+      storageKey: key("report.pdf"), displacedStorageKey: null, state: "cancelled",
+      expectedRevision: null, cleanupComplete: 0,
+    }]);
     deps.deleteStoredArtifact.mockRejectedValue(new Error("storage unavailable"));
 
     const result = await deleteOwnedScan(1, "scan-1", deps as any);
 
     expect(result).toEqual({ deleted: true });
-    expect(deps.deleteArtifactMetadata).toHaveBeenCalled();
-    expect(deps.deleteScanMetadata).toHaveBeenCalled();
+    expect(deps.markIntentCleanupComplete).not.toHaveBeenCalled();
   });
 });
 
@@ -102,30 +133,34 @@ describe("deleteAllOwnedScans", () => {
     createCleanupIntentsForArtifacts: vi.fn().mockResolvedValue([]),
   });
 
-  it("purges only the current user's listed metadata records", async () => {
+  it("purges only the current user's listed metadata records and cleans known active objects", async () => {
     const deps = dummyDependencies();
     deps.listOwnedScans.mockResolvedValue([
-      { id: 4, artifacts: [{ id: 11, artifactType: "grad_cam", storageKey: "neuroinsight/3/scan-a/grad_cam.png" }] },
+      { id: 4, artifacts: [{ id: 11, artifactType: "grad_cam", storageKey: key("grad_cam.png") }] },
       { id: 9, artifacts: [] },
     ]);
-    deps.listIntentsForScan.mockResolvedValue([{
-      id: "intent-1", scanRecordId: 4, userId: 3, artifactType: "grad_cam", storageKey: "neuroinsight/3/scan-a/grad_cam.png", displacedStorageKey: null, state: "cancelled", expectedRevision: null, cleanupComplete: 0
-    }]);
+    deps.createCleanupIntentsForArtifacts
+      .mockResolvedValueOnce([{
+        id: "cleanup-1", scanRecordId: null, userId: 1, artifactType: "grad_cam",
+        storageKey: key("grad_cam.png"), displacedStorageKey: null, state: "cancelled",
+        expectedRevision: null, cleanupComplete: 0,
+      }])
+      .mockResolvedValueOnce([]);
 
-    const result = await deleteAllOwnedScans(3, deps as any);
+    const result = await deleteAllOwnedScans(1, deps as any);
 
     expect(result).toEqual({ deletedCount: 2 });
     expect(deps.markIntentsCancelled).toHaveBeenCalledTimes(2);
-    expect(deps.createCleanupIntentsForArtifacts).toHaveBeenCalledTimes(2);
     expect(deps.deleteArtifactMetadata).toHaveBeenCalledTimes(2);
     expect(deps.deleteScanMetadata).toHaveBeenCalledTimes(2);
-    expect(deps.deleteStoredArtifact).toHaveBeenCalledWith("neuroinsight/3/scan-a/grad_cam.png");
+    expect(deps.deleteStoredArtifact).toHaveBeenCalledWith(key("grad_cam.png"));
   });
 });
 
 describe("reconcileIntents", () => {
   const dummyDependencies = () => ({
     listPendingOrUncleanedIntents: vi.fn(),
+    lockIntentForReconciliation: vi.fn(),
     findArtifactByIntent: vi.fn(),
     markIntentCommitted: vi.fn(),
     markIntentCancelled: vi.fn(),
@@ -135,60 +170,117 @@ describe("reconcileIntents", () => {
     runInTransaction: vi.fn().mockImplementation(async (cb) => cb({} as any)),
   });
 
-  it("reconciles a pending intent that actually committed and locks the artifact record", async () => {
+  const intent = (overrides: Partial<ArtifactIntent> = {}): ArtifactIntent => ({
+    id: "intent-1",
+    scanRecordId: 1,
+    userId: 1,
+    artifactType: "report",
+    storageKey: key("attempt.pdf"),
+    displacedStorageKey: key("old.pdf"),
+    state: "pending",
+    expectedRevision: null,
+    cleanupComplete: 0,
+    ...overrides,
+  });
+
+  it("locks and reconciles a stale pending intent that actually committed", async () => {
     const deps = dummyDependencies();
-    const intent: ArtifactIntent = { id: "1", scanRecordId: 1, userId: 1, artifactType: "report", storageKey: "attempt.pdf", displacedStorageKey: "old.pdf", state: "pending", expectedRevision: null, cleanupComplete: 0 };
-    deps.listPendingOrUncleanedIntents.mockResolvedValue([intent]);
-    deps.findArtifactByIntent.mockResolvedValue({ storageKey: "attempt.pdf" });
+    const pending = intent();
+    deps.listPendingOrUncleanedIntents.mockResolvedValue([pending]);
+    deps.lockIntentForReconciliation.mockResolvedValue(pending);
+    deps.findArtifactByIntent.mockResolvedValue({ storageKey: pending.storageKey });
+
+    const stats = await reconcileIntents(deps as any, 17);
+
+    expect(deps.listPendingOrUncleanedIntents).toHaveBeenCalledWith(17);
+    expect(deps.lockIntentForReconciliation).toHaveBeenCalledWith(pending, expect.anything());
+    expect(deps.findArtifactByIntent).toHaveBeenCalledWith(pending, expect.anything());
+    expect(deps.markIntentCommitted).toHaveBeenCalledWith(pending.id, expect.anything());
+    expect(deps.deleteStoredArtifact).toHaveBeenCalledWith(key("old.pdf"));
+    expect(deps.markIntentCleanupComplete).toHaveBeenCalledWith(pending.id);
+    expect(stats).toMatchObject({ processed: 1, transitionedCommitted: 1, cleanupCompleted: 1, retries: 0 });
+  });
+
+  it("does not overwrite a concurrent finalization observed after acquiring locks", async () => {
+    const deps = dummyDependencies();
+    const pending = intent();
+    const committed = intent({ state: "committed" });
+    deps.listPendingOrUncleanedIntents.mockResolvedValue([pending]);
+    deps.lockIntentForReconciliation.mockResolvedValue(committed);
 
     await reconcileIntents(deps as any);
 
-    // Ensure findArtifactByIntent is passed the transaction
-    expect(deps.findArtifactByIntent).toHaveBeenCalledWith(intent, expect.anything());
-    // Ensure markIntentCommitted is passed the transaction
-    expect(deps.markIntentCommitted).toHaveBeenCalledWith("1", expect.anything());
-    // Since it committed and had a displacedStorageKey, we clean up the displaced key outside the transaction
-    expect(deps.deleteStoredArtifact).toHaveBeenCalledWith("old.pdf");
-    expect(deps.markIntentCleanupComplete).toHaveBeenCalledWith("1");
+    expect(deps.findArtifactByIntent).not.toHaveBeenCalled();
+    expect(deps.markIntentCancelled).not.toHaveBeenCalled();
+    expect(deps.markIntentCommitted).not.toHaveBeenCalled();
+    expect(deps.deleteStoredArtifact).toHaveBeenCalledWith(key("old.pdf"));
   });
 
-  it("reconciles a pending intent that never committed", async () => {
+  it("cancels and cleans a stale pending attempt that never became active", async () => {
     const deps = dummyDependencies();
-    const intent: ArtifactIntent = { id: "2", scanRecordId: 1, userId: 1, artifactType: "report", storageKey: "attempt.pdf", displacedStorageKey: "old.pdf", state: "pending", expectedRevision: null, cleanupComplete: 0 };
-    deps.listPendingOrUncleanedIntents.mockResolvedValue([intent]);
-    deps.findArtifactByIntent.mockResolvedValue({ storageKey: "old.pdf" }); // active artifact is not the attempt
+    const pending = intent();
+    deps.listPendingOrUncleanedIntents.mockResolvedValue([pending]);
+    deps.lockIntentForReconciliation.mockResolvedValue(pending);
+    deps.findArtifactByIntent.mockResolvedValue({ storageKey: key("old.pdf") });
 
-    await reconcileIntents(deps as any);
+    const stats = await reconcileIntents(deps as any);
 
-    // Ensure markIntentCancelled is passed the transaction
-    expect(deps.markIntentCancelled).toHaveBeenCalledWith("2", expect.anything());
-    // Since it was cancelled, clean up the attempted upload outside the transaction
-    expect(deps.deleteStoredArtifact).toHaveBeenCalledWith("attempt.pdf");
-    expect(deps.markIntentCleanupComplete).toHaveBeenCalledWith("2");
+    expect(deps.markIntentCancelled).toHaveBeenCalledWith(pending.id, expect.anything());
+    expect(deps.deleteStoredArtifact).toHaveBeenCalledWith(key("attempt.pdf"));
+    expect(stats.transitionedCancelled).toBe(1);
   });
 
-  it("reconciles an already committed intent that just needs cleanup (no transaction needed)", async () => {
+  it("cleans an already committed displaced object without a transaction", async () => {
     const deps = dummyDependencies();
-    const intent: ArtifactIntent = { id: "3", scanRecordId: 1, userId: 1, artifactType: "report", storageKey: "attempt.pdf", displacedStorageKey: "old.pdf", state: "committed", expectedRevision: null, cleanupComplete: 0 };
-    deps.listPendingOrUncleanedIntents.mockResolvedValue([intent]);
+    const committed = intent({ state: "committed" });
+    deps.listPendingOrUncleanedIntents.mockResolvedValue([committed]);
 
     await reconcileIntents(deps as any);
 
     expect(deps.runInTransaction).not.toHaveBeenCalled();
-    expect(deps.deleteStoredArtifact).toHaveBeenCalledWith("old.pdf");
-    expect(deps.markIntentCleanupComplete).toHaveBeenCalledWith("3");
+    expect(deps.deleteStoredArtifact).toHaveBeenCalledWith(key("old.pdf"));
+    expect(deps.markIntentCleanupComplete).toHaveBeenCalledWith(committed.id);
   });
 
-  it("increments retry counter if cleanup fails", async () => {
+  it("never deletes the active key when displaced and current keys are identical", async () => {
     const deps = dummyDependencies();
-    const intent: ArtifactIntent = { id: "3", scanRecordId: 1, userId: 1, artifactType: "report", storageKey: "attempt.pdf", displacedStorageKey: "old.pdf", state: "committed", expectedRevision: null, cleanupComplete: 0 };
-    deps.listPendingOrUncleanedIntents.mockResolvedValue([intent]);
+    const committed = intent({ state: "committed", displacedStorageKey: key("attempt.pdf") });
+    deps.listPendingOrUncleanedIntents.mockResolvedValue([committed]);
+
+    const stats = await reconcileIntents(deps as any);
+
+    expect(deps.deleteStoredArtifact).not.toHaveBeenCalled();
+    expect(deps.markIntentCleanupComplete).toHaveBeenCalledWith(committed.id);
+    expect(stats.cleanupCompleted).toBe(1);
+  });
+
+  it("refuses cleanup keys outside the recorded user's namespace", async () => {
+    const deps = dummyDependencies();
+    const cancelled = intent({
+      state: "cancelled",
+      storageKey: "neuroinsight/999/scan-1/attempt.pdf",
+      displacedStorageKey: null,
+    });
+    deps.listPendingOrUncleanedIntents.mockResolvedValue([cancelled]);
+
+    const stats = await reconcileIntents(deps as any);
+
+    expect(deps.deleteStoredArtifact).not.toHaveBeenCalled();
+    expect(deps.markIntentCleanupComplete).not.toHaveBeenCalled();
+    expect(deps.incrementIntentRetry).toHaveBeenCalledWith(cancelled.id);
+    expect(stats.retries).toBe(1);
+  });
+
+  it("increments retry bookkeeping when physical cleanup fails", async () => {
+    const deps = dummyDependencies();
+    const committed = intent({ state: "committed" });
+    deps.listPendingOrUncleanedIntents.mockResolvedValue([committed]);
     deps.deleteStoredArtifact.mockRejectedValue(new Error("Storage unavailable"));
 
-    await reconcileIntents(deps as any);
+    const stats = await reconcileIntents(deps as any);
 
-    expect(deps.deleteStoredArtifact).toHaveBeenCalledWith("old.pdf");
     expect(deps.markIntentCleanupComplete).not.toHaveBeenCalled();
-    expect(deps.incrementIntentRetry).toHaveBeenCalledWith("3");
+    expect(deps.incrementIntentRetry).toHaveBeenCalledWith(committed.id);
+    expect(stats.retries).toBe(1);
   });
 });
