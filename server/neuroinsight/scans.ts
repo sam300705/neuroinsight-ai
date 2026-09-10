@@ -3,7 +3,7 @@ import { scanArtifactIntents, scanArtifacts, scanRecords } from "../../drizzle/s
 import { getDb } from "../db";
 import { storageDelete, storageGetSignedUrl, storagePutStable } from "../storage";
 import { artifactRegistrationSchema, measurementSchema, scanResultSchema, validateArtifactPayload, warningsSchema } from "./validation";
-import { deleteAllOwnedScans, deleteOwnedScan, issueOwnedArtifactDownload, ArtifactIntent, DbTx, OwnedArtifact } from "./artifactLifecycle";
+import { assertOwnedStorageKey, deleteAllOwnedScans, deleteOwnedScan, issueOwnedArtifactDownload, ArtifactIntent, DbTx, OwnedArtifact } from "./artifactLifecycle";
 import { ACTIVE_HISTORY_MODE, historyListInputSchema } from "./historyPolicy";
 import { protectedProcedure, router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
@@ -155,7 +155,9 @@ export const scansRouter = router({
 
         // @ts-ignore Drizzle's MySQL builder supports FOR UPDATE at runtime.
         const [checkIntent] = await (tx.select({ state: scanArtifactIntents.state }).from(scanArtifactIntents).where(eq(scanArtifactIntents.id, intentId)) as any).for("update").limit(1);
-        if (checkIntent?.state === "cancelled") throw new Error("Upload was cancelled.");
+        if (!checkIntent || checkIntent.state !== "pending") {
+          throw new Error("Artifact upload is no longer pending.");
+        }
 
         // @ts-ignore Drizzle's MySQL builder supports FOR UPDATE at runtime.
         const [existing] = await (tx.select({ storageKey: scanArtifacts.storageKey }).from(scanArtifacts).where(and(eq(scanArtifacts.scanRecordId, record.id), eq(scanArtifacts.artifactType, input.artifactType))) as any).for("update").limit(1);
@@ -177,17 +179,30 @@ export const scansRouter = router({
 
         await tx.update(scanArtifactIntents)
           .set({ state: "committed", displacedStorageKey: actualDisplacedKey })
-          .where(eq(scanArtifactIntents.id, intentId));
+          .where(and(
+            eq(scanArtifactIntents.id, intentId),
+            eq(scanArtifactIntents.state, "pending"),
+          ));
       });
       transactionSuccess = true;
     } catch {
       throw new Error("Failed to finalize artifact registration.");
     }
 
-    if (transactionSuccess && actualDisplacedKey && actualDisplacedKey !== attemptStorageKey) {
+    if (transactionSuccess) {
       try {
-        await storageDelete(actualDisplacedKey);
-        await db.update(scanArtifactIntents).set({ cleanupComplete: 1 }).where(eq(scanArtifactIntents.id, intentId));
+        if (actualDisplacedKey && actualDisplacedKey !== attemptStorageKey) {
+          assertOwnedStorageKey(ctx.user.id, actualDisplacedKey);
+          await storageDelete(actualDisplacedKey);
+        }
+        // Even a first registration has finished all required cleanup work. Closing that
+        // intent here keeps the recovery queue reserved for genuinely unresolved operations.
+        await db.update(scanArtifactIntents)
+          .set({ cleanupComplete: 1 })
+          .where(and(
+            eq(scanArtifactIntents.id, intentId),
+            eq(scanArtifactIntents.state, "committed"),
+          ));
       } catch {
         // Durable recovery retries cleanup without failing the successfully committed registration.
       }

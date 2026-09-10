@@ -59,6 +59,12 @@ export async function reconcileArtifactIntentsBatch(
           and(
             eq(scanArtifactIntents.state, "committed"),
             eq(scanArtifactIntents.cleanupComplete, 0),
+            // First cleanup attempt may happen immediately. Once it fails, retryCount is
+            // incremented and updatedAt becomes a simple bounded backoff clock.
+            or(
+              eq(scanArtifactIntents.retryCount, 0),
+              lt(scanArtifactIntents.updatedAt, staleBefore),
+            ),
           ),
         ))
         .orderBy(asc(scanArtifactIntents.updatedAt))
