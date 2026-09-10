@@ -44,13 +44,27 @@
   "evidence_ledger_version": "neuroinsight-evidence-ledger/2026-09-11",
   "evidence_graph_version": "neuroinsight-evidence-graph/2026-09-11",
   "research_passport_versions": [
-    "neuroinsight-research-passport/v1"
+    "neuroinsight-research-passport/v1",
+    "neuroinsight-research-passport/v2"
   ],
+  "passport_v2": {
+    "status": "implemented_additive",
+    "integrity": "canonical_payload_sha256_plus_analysis_receipt_sha256_when_present",
+    "release_manifest_digest": "optional_until_exact_build_manifest_is_supplied",
+    "public_key_attestation": "conditional_not_issued"
+  },
   "passport_attestation": {
     "schema_version": "neuroinsight-passport-attestation/v1",
     "algorithm": "Ed25519",
     "status": "conditional",
     "activation_gate": "Bind the attestation to a verified server analysis receipt and distribute the trusted public key independently before exposing signing as a release capability."
+  },
+  "experiment_comparison": {
+    "schema_version": "neuroinsight-experiment-comparison/v1",
+    "incumbent": "EXP-005",
+    "current_candidate": "EXP-006",
+    "current_decision": "retain_incumbent",
+    "automatic_promotion": false
   },
   "reliability_tooling": {
     "status": "available_as_research_tooling",
