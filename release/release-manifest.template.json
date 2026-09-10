@@ -77,6 +77,19 @@
     ],
     "claim_boundary": "Metrics require labeled research-evaluation samples and do not establish robustness, external validity, conformal coverage, or clinical safety."
   },
+  "robustness_research": {
+    "protocol_schema": "neuroinsight-robustness-protocol/v1",
+    "evidence_schema": "neuroinsight-perturbation-evidence/v1",
+    "status": "protocol_only_not_release_evidence",
+    "aggregate_robustness_score": null,
+    "release_state": "not_established"
+  },
+  "reproducibility_bundle": {
+    "schema_version": "neuroinsight-reproducibility-bundle/v1",
+    "status": "generated_in_ci",
+    "raw_imaging_data_included": false,
+    "slsa_attestation_claimed": false
+  },
   "database_migration_head": "0006_restore_referential_guards",
   "artifact_policy": {
     "raw_upload_persistence": false,
