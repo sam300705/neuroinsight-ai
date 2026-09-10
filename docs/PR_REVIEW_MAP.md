@@ -1,30 +1,46 @@
 # PR #1 Risk-Based Review Map
 
-This map is a review aid for PR #1, not an approval. **Baseline historical review snapshot:** GitHub reported **44 commits / 142 changed paths** at baseline head `5bbcc69`. **Fresh live-PR evidence snapshot:** GitHub reported **52 commits / 154 changed files** at head `078f6181a0bb61419e9619b4b3b240a52aba399f`. A documentation-only reconciliation commit may advance the live head and commit count, so the GitHub PR remains the source of truth after that point. Every changed path was inventory-classified, but no claim is made that every path received full line-by-line semantic review. Detailed source review concentrated on the high-risk paths below; CI success does not substitute for human review.
+This file is a review aid, not an approval. PR #1 is large and GitHub's current PR page is the source of truth for exact commit/file totals. Earlier historical size snapshots in old handovers are not release evidence.
 
-| Review group | Files or areas | Risk | Recommended review focus |
-|---|---|---:|---|
-| FastAPI/inference | `backend/neuroinsight_api/app.py`, `analysis_receipts.py`, `onnx_classifier_runtime.py`, `model_contract.py`, `reporting.py`, request schemas | High | Fail-closed startup, signed receipt claims/expiry/replay scope, report rendering boundary, artifact URL/host/byte/checksum checks, fixed EXP-005 contract, and Mode B rejection. |
-| Node API/auth/storage | `server/neuroinsight/scans.ts`, `artifactLifecycle.ts`, `storage.ts`, tRPC CSRF/security modules | High | User ownership predicates, artifact access, deletion order, fresh signed URLs, no raw upload persistence, and mutation origin checks. |
-| Database/migrations | `drizzle/schema.ts`, forward migrations and indexes | High | Existing-data compatibility, foreign keys, uniqueness, index use, and rollback/operational consequences. |
-| CI/security/deployment | `.github/workflows/verify.yml`, `backend/Dockerfile`, lock files, ignore/hygiene scripts | High | Immutable action references, lock enforcement, dependency audit behavior, SBOM artifact, 3.12 alignment, credential-free container smoke, and no accidental secrets/data. |
-| Frontend | `client/src/**` | Medium | Authoritative server result rendering, report receipt transport, disclaimer visibility, no browser provider key or sensitive assistant payload, errors, and accessibility. |
-| ML evidence/tooling | `ml/**`, audit/split/training utilities, manifests | High | Provenance, split integrity, no test leakage, image-level wording, fixed EXP-005 deployment boundary, and non-promotion of EXP-006. |
-| Documentation | `README.md`, `docs/**`, reports/status records | Medium | Exact URLs/commits, limitations, owner gates, and no clinical or production-readiness overstatement. |
-| Generated or derived files | `backend/uv.lock`, `backend/requirements*.lock`, lockfiles and CI SBOM artifact configuration | Medium | Regeneration instructions, provenance from `pyproject.toml`, no manual edits, and review of resolved security updates. |
+Every changed path has been inventory-classified during the hardening work, but this project does **not** claim a complete human line-by-line semantic audit of every changed line. Automated CI is also not a substitute for human review.
+
+## High-risk review groups
+
+| Group | Primary paths | Review focus |
+|---|---|---|
+| FastAPI / inference | `backend/neuroinsight_api/**` | fail-closed model loading/readiness, input bounds, signed receipts, report boundary, provider isolation, Mode B rejection |
+| Node auth/API/storage | `server/_core/**`, `server/neuroinsight/**`, `server/storage.ts` | authentication/session scope, CSRF, owner predicates, storage-key boundaries, artifact lifecycle/recovery |
+| Database | `drizzle/schema.ts`, `drizzle/0002*` through `0006*`, `drizzle/meta/**` | uniqueness, referential integrity, intent durability, migration ordering/preflight |
+| Frontend | `client/src/**` | authoritative server-result rendering, no unsafe browser persistence, report availability state, disclaimers, accessibility |
+| ML/data | `ml/**`, model/data audit records | provenance, split leakage, image-level claim wording, no accidental Mode B promotion |
+| CI/supply chain | `.github/workflows/verify.yml`, lockfiles, Dockerfile | exact-SHA actions, fixed uv, lock enforcement, audits, SBOM, credential-free smoke |
+| Documentation | `README.md`, `PROJECT_STATUS.md`, `MANUAL_GATES.md`, `docs/**` | public-vs-preview distinction, exact limitations, migration sequence, no clinical overclaim |
+
+## Final artifact-lifecycle review focus
+
+The final hardening specifically requires reviewers to confirm these invariants together:
+
+1. intent is persisted before upload;
+2. finalization accepts only a still-`pending` intent;
+3. lock order is scan → intent → artifact for recovery/finalization compatibility;
+4. bulk deletion re-reads and locks the exact owned scan/artifact pointers in its transaction;
+5. cleanup intents exist before owned metadata deletion commits;
+6. provider deletion occurs after DB commit and failures remain durable/retryable;
+7. only owner-scoped real provider keys are deleted;
+8. legacy `pending:` metadata placeholders are never submitted to provider deletion;
+9. automatic sweeps are bounded/non-overlapping and stale uploads receive settle grace;
+10. schema migration `0006` restores active metadata referential guards while cleanup intent bookkeeping remains detachable.
+
+## Automated evidence
+
+Application-code baseline `e60272a44cb771624d4c1eff04336cb35843840f` passed workflow run `34526092850` (#196): 260 TypeScript tests, 143 backend tests, 8 ML/data tests, selected coverage gates, production build/bundle, browser accessibility/corruption checks, Node/Python audits, lock validation, SBOM, and container smoke.
+
+The CI-only follow-up `c675b4d` refreshes exact action commit pins to current Node-24-capable releases and pins uv `0.12.13`.
+
+## Repository governance evidence
+
+A fresh read during the final engineering pass reported `main` with `protected: false`; required checks were not enforced by branch protection. This is an owner/repository-settings gate and must be completed before relying on GitHub policy to prevent direct bypass of review/CI.
 
 ## Recommended review order
 
-1. Read **FastAPI/inference** and the new report-integrity tests first; report rendering must consume only a valid server-issued Mode A receipt.
-2. Review **Node API/auth/storage** and **migrations** together because authorization, artifact references, and deletion behavior cross the database boundary.
-3. Review **CI/security/deployment** and generated locks next, including the lock/audit/SBOM/container smoke steps.
-4. Review **ML evidence** against the capability manifest and dataset audit before considering a model change.
-5. Review frontend transport/accessibility changes and then documentation for accurate public-facing scope.
-
-## Fresh branch-protection evidence
-
-On the fresh read-only check for the `078f6181a0bb61419e9619b4b3b240a52aba399f` evidence snapshot, the GitHub branch-protection endpoint for `main` returned **`404: Branch not protected`**. This is an observed configuration fact, not a request or authorization to change it. Configure branch protection and required review/check policy before any owner merge decision.
-
-## Split strategy
-
-No automatic split, close, recreation, or history rewrite is proposed. The PR is large, but its changes are already organized by focused commits and the current targeted changes add a clear report-integrity/artifact/security group. If reviewers require a split, retain this PR as the audit branch and cherry-pick only reviewed, logically independent groups into new branches; do not make a split a prerequisite for safe review.
+Review FastAPI/inference and Node artifact/auth boundaries first, then migrations, then CI/supply-chain changes, then ML evidence/frontend, and finally public documentation. If the PR must be split for human review, preserve this branch as the audit branch and move only logically independent reviewed slices; do not rewrite history merely to make the diff appear smaller.
