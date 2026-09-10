@@ -1,33 +1,56 @@
 # NeuroInsight AI — Project Status
 
-**Last updated:** 2026-09-04
-**Current readiness:** **Level 1 — functional academic demonstration.** The project is not a medical device, a patient-level validated system, or a clinical deployment.
+**Last updated:** 2026-09-11  
+**Engineering status:** **Code-complete release candidate for the declared academic scope**  
+**Product/clinical status:** **Level 1 — functional non-clinical academic demonstration**
 
-> **Required notice:** “This system is not a medical diagnosis and must not replace a qualified radiologist.”
+> **This system is not a medical diagnosis and must not replace a qualified radiologist.**
 
-## Verified current capabilities
+## Capabilities
 
 | Capability | Status | Verified boundary |
 |---|---|---|
-| Mode A four-class 2D classification | **Publicly available** | Experimental, fixed-split **image-level** classification only. |
-| Model version | **EXP-005** | ResNet50 head-only model using BDNeuro-MRI v7. |
-| Calibration and abstention | **Available** | Validation-only temperature scaling (`T=0.689875`) and a `0.55` abstention threshold; the displayed score is not a medical probability. |
-| Grad-CAM and PDF | **Verified on earlier public recovery; receipt-dependent in current PR** | Both derive from real Mode A inference; Grad-CAM is attribution, not segmentation. A PR #1 release without the owner-controlled signing secret disables PDF generation fail-closed. |
-| Private derived-artifact history | **Verified** | With consent, saves account-linked pseudonymous metadata plus derived Mode A PDF/Grad-CAM only; each retrieval receives a fresh ownership-gated URL. |
-| Mode B segmentation | **Intentionally unavailable** | No full-volume model with defensible held-out validation is deployed. |
+| Mode A four-class 2D classification | **Available** | Experimental fixed-split image-level classification only. |
+| Mode A model | **EXP-005** | ResNet50 head-only academic classifier. |
+| Calibration / abstention | **Available** | Validation-derived temperature/threshold; displayed score is not a medical probability. |
+| Grad-CAM | **Available with Mode A** | Classifier attribution, not segmentation or a tumor boundary. |
+| PDF report | **Fail-closed unless signing configured** | Requires the server-side analysis receipt signing contract. |
+| Private derived-artifact history | **Implemented** | Account-linked pseudonymous metadata plus derived artifacts only; source MRI pixels are not persisted by this history layer. |
+| Artifact recovery | **Implemented** | Durable intents, transactional replacement/deletion bookkeeping, automatic bounded reconciliation, retry/backoff, and admin reconciliation. |
+| Research assistant | **Offline fallback available** | External providers remain opt-in/configuration-gated. |
+| Mode B segmentation | **Unavailable by design** | No promoted full-volume case-disjoint segmentation model exists. |
 
-The public dashboard is <https://neuroaiapp-gtbxy6cw.manus.space>. Its CORS-restricted ONNX inference service is documented in `docs/DEPLOYMENT.md` and `docs/PUBLIC_HANDOVER.md`.
+## Current verification evidence
 
-## Verified evidence
+The final application-code baseline `e60272a44cb771624d4c1eff04336cb35843840f` passed GitHub Actions run `34526092850` (#196):
 
-EXP-005 achieved held-out fixed-split **image-level** accuracy `0.8099`, macro-F1 `0.8080`, and weighted-F1 `0.8110`. These results are not patient-independent, external, clinical, diagnostic, or medical-probability evidence. Current branch evidence is **117** Vitest tests, **143** FastAPI/support tests, and **8** ML/data tests; passing TypeScript, build, bundle, browser, container, and selected-module coverage gates; clean production Node and Python audits; receipt-protected report integrity; optional atomic shared abuse/replay state with fail-closed required mode; Vercel-aware client identity for fair rate-limit buckets; fail-closed dashboard startup on its exact production port, strong signing configuration, and application-bound sessions; HTTPS-only time-bounded managed-storage URLs with bounded errors; an allowlisted, redirect-disabled, size-bounded dormant voice-download boundary; bounded operational failure logs that omit exception, provider-body, endpoint, credential, and user detail; privacy-bounded request events and no-store API responses; obvious non-MRI rejection; bounded 512-pixel Grad-CAM output; memory-only browser analysis state; non-persistent account profiles and seven-day sessions; strict runtime response validation and request deadlines; retry-safe deterministic artifact keys; physical-delete-before-metadata behavior; and strict Mode B failure boundaries. These branch totals do not mean the public dashboard has been republished, and passing the heuristic input screen does not prove MRI modality or in-distribution status. Shared Upstash and operational alerting are code/documentation-ready but not provisioned or live-verified. Voice transcription remains unwired and unavailable unless an owner configures and verifies its exact audio-host allowlist. See `docs/TEST_REPORT.md` for methods and boundaries.
+- 260 TypeScript/Vitest tests across 45 files
+- 143 FastAPI/support tests
+- 8 ML/data tests
+- TypeScript selected coverage 94.69% statements/lines, 80.52% branches, 100% functions
+- all configured Python critical coverage thresholds
+- production build and bundle gate
+- browser corrupt-upload and WCAG 2 A/AA route checks
+- Node and Python production dependency audits with no known vulnerabilities
+- Python lock check and SBOM generation
+- backend Docker build and credential-free health smoke
 
-## Current research work
+The exact `e60272a` Vercel inference preview was `READY`; `/health`, `/ready`, and `/api/v1/model-info` returned HTTP 200 with EXP-005 available and segmentation unavailable. Report signing remained intentionally unavailable without `ANALYSIS_RECEIPT_SECRET`.
 
-The independent BRISC 2025 research-data audit is complete and recorded in `docs/BRISC_AUDIT.md`; raw data and generated manifests remain outside Git. It is separate from the deployed EXP-005 service. Any future classification or segmentation experiment remains independently gated by provenance, case-disjoint evidence, and a release decision.
+CI was subsequently hardened at `c675b4d` with exact Node-24-capable action commit pins and uv `0.12.13`; this is a CI-only supply-chain change.
 
-The completed bounded BRISC `EXP-006` ResNet18 classifier experiment did not meet the separate promotion bar: its official image-level test accuracy was `0.7510` and macro-F1 `0.7501`, lower than EXP-005. Its checkpoint remains outside Git and was not deployed.
+## Artifact/data lifecycle state
 
-## Remaining gates
+Migrations `0004`, `0005`, and `0006` collectively define the durable artifact-intent model. `0006_restore_referential_guards.sql` is mandatory after `0005`: active scan metadata is tied to users, active artifact rows are tied to scans, while cleanup-intent rows may survive parent deletion long enough to finish physical cleanup.
 
-The only product capability intentionally held back is Mode B. A new `scripts/build_case_disjoint_full_volume_manifest.py` utility can prepare complete image-plus-label NIfTI cases for case-disjoint development, but it does not train or activate a model. Activating Mode B still requires a full-volume, case-disjoint model and held-out evaluation, uncertainty policy, artifact verification, and a separate public-release decision. The project must not infer physical tumour size, volume, or 3D geometry from the current 2D classifier.
+The application no longer relies on deleting provider objects inside database transactions. Deletion first records durable cleanup work and removes owned metadata transactionally, then performs provider deletion outside the transaction. Failed cleanup remains discoverable and retryable.
+
+## Research evidence
+
+EXP-005 held-out fixed-split **image-level** results remain accuracy `0.8099`, macro-F1 `0.8080`, weighted-F1 `0.8110`. These are not patient-independent, external, diagnostic, or clinical performance claims.
+
+The bounded BRISC EXP-006 experiment did not meet the separate promotion bar and was not deployed. Mode B remains unavailable until full-volume case-disjoint research and release gates are satisfied.
+
+## Remaining non-code release gates
+
+See `MANUAL_GATES.md`. The key unresolved boundaries are repository branch protection, managed database migration execution, real authentication/signing configuration, managed storage lifecycle verification, distributed shared-state provisioning if required, observability/alerts, and separate owner approval for merge/publication/production promotion.
