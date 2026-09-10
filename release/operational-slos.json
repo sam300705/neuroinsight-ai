@@ -1,0 +1,63 @@
+{
+  "schema_version": "neuroinsight-operational-slos/v1",
+  "scope": "academic_non_clinical_research_service",
+  "status": "targets_declared_not_production_certified",
+  "telemetry_policy": {
+    "allowed_dimensions": [
+      "route",
+      "method",
+      "status_code",
+      "duration_ms",
+      "request_id",
+      "generic_error_type",
+      "deployment_version"
+    ],
+    "forbidden_dimensions": [
+      "raw_image_bytes",
+      "filename",
+      "account_email",
+      "signed_url",
+      "storage_key",
+      "session_token",
+      "provider_secret",
+      "chat_prompt_content"
+    ],
+    "opentelemetry_export": "not_configured",
+    "reason": "A collector/export destination, retention policy, access policy, and privacy review are deployment-owned prerequisites."
+  },
+  "targets": [
+    {
+      "id": "health-availability",
+      "signal": "GET /health success",
+      "target": 0.999,
+      "window": "30d",
+      "state": "target_only"
+    },
+    {
+      "id": "eligible-inference-success",
+      "signal": "Eligible Mode A inference requests completing without 5xx/unavailable runtime failure",
+      "target": 0.995,
+      "window": "30d",
+      "state": "target_only"
+    },
+    {
+      "id": "inference-p95-latency",
+      "signal": "Mode A inference duration_ms p95",
+      "target_ms": 3000,
+      "window": "24h",
+      "state": "target_only"
+    },
+    {
+      "id": "cleanup-backlog-age",
+      "signal": "Oldest incomplete durable artifact cleanup intent age",
+      "target_seconds": 900,
+      "window": "continuous",
+      "state": "target_only"
+    }
+  ],
+  "alert_requirements": [
+    "Alert destinations and ownership must be configured outside source control.",
+    "No alert payload may contain raw imaging data or credentials.",
+    "SLO attainment must not be claimed until measured from a declared production-like environment for the full window."
+  ]
+}
