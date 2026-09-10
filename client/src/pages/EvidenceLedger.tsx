@@ -103,9 +103,9 @@ export default function EvidenceLedger() {
 
     <section className="grid gap-4 md:grid-cols-2">
       {entries.map(entry => <article key={entry.id} className={`rounded-2xl border p-5 shadow-sm ${stateStyles[entry.state]}`}>
-        <div className="flex items-start justify-between gap-4"><div><p className="text-[11px] font-semibold uppercase tracking-[0.13em] opacity-60">{entry.category}</p><h2 className="mt-2 text-lg font-semibold">{entry.title}</h2></div><StateIcon state={entry.state} /></div>
-        <div className="mt-4 rounded-xl bg-white/65 p-4"><p className="text-xs font-semibold uppercase tracking-[0.1em] opacity-60">{text.evidence}</p><p className="mt-2 text-sm leading-6">{entry.evidence}</p></div>
-        <div className="mt-3 border-t border-current/10 pt-3"><p className="text-xs font-semibold uppercase tracking-[0.1em] opacity-60">{text.boundary}</p><p className="mt-2 text-sm leading-6">{entry.boundary}</p></div>
+        <div className="flex items-start justify-between gap-4"><div><p className="text-[11px] font-bold uppercase tracking-[0.13em] text-slate-700">{entry.category}</p><h2 className="mt-2 text-lg font-semibold">{entry.title}</h2></div><StateIcon state={entry.state} /></div>
+        <div className="mt-4 rounded-xl bg-white/80 p-4"><p className="text-xs font-bold uppercase tracking-[0.1em] text-slate-700">{text.evidence}</p><p className="mt-2 text-sm leading-6">{entry.evidence}</p></div>
+        <div className="mt-3 border-t border-slate-300 pt-3"><p className="text-xs font-bold uppercase tracking-[0.1em] text-slate-700">{text.boundary}</p><p className="mt-2 text-sm leading-6">{entry.boundary}</p></div>
       </article>)}
     </section>
   </div>;
@@ -116,5 +116,5 @@ function Metric({ icon, value, label }: { icon: React.ReactNode; value: number; 
 }
 
 function StateIcon({ state }: { state: EvidenceState }) {
-  return <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-white/70" aria-label={state.replace("_", " ")}>{state === "demonstrated" ? <CheckCircle2 className="size-5" /> : state === "conditional" ? <CircleDashed className="size-5" /> : <ShieldQuestion className="size-5" />}</span>;
+  return <span role="img" className="grid size-9 shrink-0 place-items-center rounded-xl bg-white/80 text-slate-800" aria-label={state.replace("_", " ")}>{state === "demonstrated" ? <CheckCircle2 className="size-5" /> : state === "conditional" ? <CircleDashed className="size-5" /> : <ShieldQuestion className="size-5" />}</span>;
 }
