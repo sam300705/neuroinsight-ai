@@ -14,7 +14,11 @@ const modelRegistry = readJson("models/EXP-005/model-manifest.json");
 const modelCard = read("docs/MODEL_CARD.md");
 const capabilityManifest = read("docs/CAPABILITY_MANIFEST.md");
 const evidenceLedger = read("client/src/lib/evidenceLedger.ts");
+const evidenceGraph = read("client/src/lib/evidenceGraph.ts");
 const passport = read("client/src/lib/researchPassport.ts");
+const passportAttestation = read("server/neuroinsight/passportAttestation.ts");
+const reliabilityMetrics = read("client/src/lib/reliabilityMetrics.ts");
+const reliabilityCli = read("scripts/analyze-reliability-bundle.ts");
 const architecture = read("docs/ARCHITECTURE.md");
 const artifactLifecycle = read("docs/ARTIFACT_LIFECYCLE_RECOVERY.md");
 const migrationJournal = readJson("drizzle/meta/_journal.json");
@@ -64,9 +68,26 @@ expect(evidenceLedger.includes(`EVIDENCE_LEDGER_VERSION = "${manifest.evidence_l
 expect(evidenceLedger.includes("aggregate_trust_score: null"), "evidence ledger export must not produce an aggregate trust score");
 expect(evidenceLedger.includes('state: "not_established"'), "evidence ledger must preserve explicit not-established evidence states");
 
+expect(evidenceGraph.includes(`EVIDENCE_GRAPH_VERSION = "${manifest.evidence_graph_version}"`), "evidence graph version differs from release manifest");
+expect(evidenceGraph.includes('id: "mode-b-gate"'), "evidence graph must include the Mode B gate");
+expect(evidenceGraph.includes('id: "passport-attestation"'), "evidence graph must include the passport attestation boundary");
+expect(evidenceGraph.includes("aggregate_trust_score: null"), "evidence graph must not emit an aggregate trust score");
+
 for (const version of manifest.research_passport_versions) {
   expect(passport.includes(version), `research passport implementation does not contain declared schema ${version}`);
 }
+
+expect(manifest.passport_attestation?.status === "conditional", "passport public-key attestation must remain conditional until trusted receipt binding is deployed");
+expect(passportAttestation.includes(manifest.passport_attestation?.schema_version), "passport attestation implementation schema differs from release manifest");
+expect(passportAttestation.includes('algorithm: "Ed25519"'), "passport attestation implementation must remain Ed25519");
+expect(passportAttestation.includes("analysisReceiptSha256"), "passport attestation must bind an analysis-receipt digest before release activation");
+
+expect(manifest.reliability_tooling?.status === "available_as_research_tooling", "reliability tooling must be declared as research tooling, not clinical evidence");
+for (const symbol of ["expectedCalibrationError", "topLabelBrierScore", "wilsonAccuracyInterval", "riskCoverageCurve"]) {
+  expect(reliabilityMetrics.includes(`function ${symbol}`), `reliability metrics implementation is missing ${symbol}`);
+}
+expect(reliabilityCli.includes(manifest.reliability_tooling?.schema_version), "reliability CLI schema differs from release manifest");
+expect(reliabilityCli.includes("No clinical, diagnostic, patient-level, external-validation, or conformal-coverage claim"), "reliability CLI must preserve the explicit non-clinical claim boundary");
 
 expect(architecture.includes("Mode B is a disabled research roadmap, not a hidden service capability."), "architecture must keep Mode B visibly disabled");
 expect(artifactLifecycle.includes("durable intent"), "artifact lifecycle documentation must describe durable-intent cleanup");
@@ -85,4 +106,6 @@ console.log("Release truth verification passed.");
 console.log(`Mode A: ${manifest.mode_a.experiment_id} (${manifest.mode_a.model_version})`);
 console.log(`Mode B: ${manifest.mode_b.status}`);
 console.log(`Evidence ledger: ${manifest.evidence_ledger_version}`);
+console.log(`Evidence graph: ${manifest.evidence_graph_version}`);
+console.log(`Passport attestation: ${manifest.passport_attestation.status}`);
 console.log(`Migration head: ${manifest.database_migration_head}`);
