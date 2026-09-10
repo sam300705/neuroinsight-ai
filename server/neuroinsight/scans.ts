@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, like, lt, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, like, lt } from "drizzle-orm";
 import { scanArtifactIntents, scanArtifacts, scanRecords } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { storageDelete, storageGetSignedUrl, storagePutStable } from "../storage";
@@ -51,7 +51,8 @@ export const scansRouter = router({
           uncertaintyReason: record.uncertaintyReason ?? undefined,
           calibrated: record.calibrated === 1,
           manualReviewRecommended: record.manualReviewRecommended === 1,
-          measurement, warnings,
+          measurement,
+          warnings,
         });
         if (!result.success || ![0, 1].includes(record.calibrated) ||
             ![0, 1].includes(record.manualReviewRecommended) ||
@@ -106,16 +107,13 @@ export const scansRouter = router({
     const db = await getDb();
     if (!db) throw new Error("Scan history database is unavailable.");
 
-    // Validate ownership before starting
     const [record] = await db.select().from(scanRecords).where(and(eq(scanRecords.userId, ctx.user.id), eq(scanRecords.scanId, input.scanId))).limit(1);
     if (!record) throw new Error("Scan record was not found for this user.");
 
     const bytes = validateArtifactPayload(input.base64, input.contentType);
-
     const intentId = crypto.randomUUID();
     const extension = input.artifactType === "report" ? "pdf" : "png";
     const attemptSuffix = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-    // Use full intentId UUID + operation ID suffix
     const attemptStorageKey = `neuroinsight/${ctx.user.id}/${input.scanId}/${input.artifactType}_${intentId}_${attemptSuffix}.${extension}`;
 
     await db.insert(scanArtifactIntents).values({
@@ -134,39 +132,33 @@ export const scansRouter = router({
     let stored: { key: string; url: string } | null = null;
     try {
       stored = await storagePutStable(attemptStorageKey, bytes, input.contentType);
-      if (stored.key !== attemptStorageKey) {
-        throw new Error("Provider returned unexpected storage key");
-      }
+      if (stored.key !== attemptStorageKey) throw new Error("Provider returned unexpected storage key");
       uploadSuccess = true;
-    } catch (error) {
+    } catch {
       try {
         await db.update(scanArtifactIntents).set({ state: "cancelled" }).where(eq(scanArtifactIntents.id, intentId));
       } catch {
-        // ignore
+        // Durable recovery will retry from the still-pending intent if this update also fails.
       }
       throw new Error("Artifact upload failed.");
     }
 
-    if (!uploadSuccess || !stored) {
-       throw new Error("Artifact upload failed.");
-    }
+    if (!uploadSuccess || !stored) throw new Error("Artifact upload failed.");
 
     let transactionSuccess = false;
     let actualDisplacedKey: string | null = null;
     try {
       await db.transaction(async (tx) => {
-        // @ts-ignore
+        // @ts-ignore Drizzle's MySQL builder supports FOR UPDATE at runtime.
         const [checkRecord] = await (tx.select({ id: scanRecords.id }).from(scanRecords).where(eq(scanRecords.id, record.id)) as any).for("update").limit(1);
         if (!checkRecord) throw new Error("Scan was deleted during upload.");
 
-        // @ts-ignore
+        // @ts-ignore Drizzle's MySQL builder supports FOR UPDATE at runtime.
         const [checkIntent] = await (tx.select({ state: scanArtifactIntents.state }).from(scanArtifactIntents).where(eq(scanArtifactIntents.id, intentId)) as any).for("update").limit(1);
         if (checkIntent?.state === "cancelled") throw new Error("Upload was cancelled.");
 
-        // Read ACTUAL current pointer under the shared lock
-        // @ts-ignore
+        // @ts-ignore Drizzle's MySQL builder supports FOR UPDATE at runtime.
         const [existing] = await (tx.select({ storageKey: scanArtifacts.storageKey }).from(scanArtifacts).where(and(eq(scanArtifacts.scanRecordId, record.id), eq(scanArtifacts.artifactType, input.artifactType))) as any).for("update").limit(1);
-
         actualDisplacedKey = existing ? existing.storageKey : null;
 
         await tx.insert(scanArtifacts).values({
@@ -174,13 +166,13 @@ export const scansRouter = router({
           artifactType: input.artifactType,
           storageKey: stored!.key,
           storageUrl: "ownership-scoped-download-only",
-          contentType: input.contentType
+          contentType: input.contentType,
         }).onDuplicateKeyUpdate({
           set: {
             storageKey: stored!.key,
             storageUrl: "ownership-scoped-download-only",
-            contentType: input.contentType
-          }
+            contentType: input.contentType,
+          },
         });
 
         await tx.update(scanArtifactIntents)
@@ -188,17 +180,17 @@ export const scansRouter = router({
           .where(eq(scanArtifactIntents.id, intentId));
       });
       transactionSuccess = true;
-    } catch (error) {
+    } catch {
       throw new Error("Failed to finalize artifact registration.");
     }
 
     if (transactionSuccess && actualDisplacedKey && actualDisplacedKey !== attemptStorageKey) {
-       try {
-         await storageDelete(actualDisplacedKey);
-         await db.update(scanArtifactIntents).set({ cleanupComplete: 1 }).where(eq(scanArtifactIntents.id, intentId));
-       } catch (err) {
-         // ignore
-       }
+      try {
+        await storageDelete(actualDisplacedKey);
+        await db.update(scanArtifactIntents).set({ cleanupComplete: 1 }).where(eq(scanArtifactIntents.id, intentId));
+      } catch {
+        // Durable recovery retries cleanup without failing the successfully committed registration.
+      }
     }
 
     return { artifactType: input.artifactType, contentType: input.contentType, existing: Boolean(actualDisplacedKey), pending: false };
@@ -222,15 +214,16 @@ export const scansRouter = router({
   }),
 
   deleteOne: protectedProcedure.input(z.object({ scanId: z.string().uuid() })).mutation(async ({ ctx, input }) => {
-    const db = await getDb(); if (!db) throw new Error("Scan history database is unavailable.");
+    const db = await getDb();
+    if (!db) throw new Error("Scan history database is unavailable.");
 
     return deleteOwnedScan(ctx.user.id, input.scanId, {
       findOwnedScan: async (userId, scanId, tx) => {
         const execDb = tx || db;
-        // @ts-ignore
+        // @ts-ignore Drizzle's MySQL builder supports FOR UPDATE at runtime.
         const record = tx ? (await (tx.select({ id: scanRecords.id }).from(scanRecords).where(and(eq(scanRecords.userId, userId), eq(scanRecords.scanId, scanId))) as any).for("update").limit(1))[0] : (await execDb.select({ id: scanRecords.id }).from(scanRecords).where(and(eq(scanRecords.userId, userId), eq(scanRecords.scanId, scanId))).limit(1))[0];
         if (!record) return undefined;
-        // @ts-ignore
+        // @ts-ignore Drizzle's MySQL builder supports FOR UPDATE at runtime.
         const artifacts = tx ? await (tx.select({ id: scanArtifacts.id, storageKey: scanArtifacts.storageKey, artifactType: scanArtifacts.artifactType }).from(scanArtifacts).where(eq(scanArtifacts.scanRecordId, record.id)) as any).for("update") : await execDb.select({ id: scanArtifacts.id, storageKey: scanArtifacts.storageKey, artifactType: scanArtifacts.artifactType }).from(scanArtifacts).where(eq(scanArtifacts.scanRecordId, record.id));
         return { ...record, artifacts };
       },
@@ -243,12 +236,9 @@ export const scansRouter = router({
         const execDb = tx || db;
         await execDb.delete(scanRecords).where(eq(scanRecords.id, recordId));
       },
-      runInTransaction: async (callback) => {
-        return await db.transaction(callback);
-      },
+      runInTransaction: async (callback) => db.transaction(callback),
       markIntentsCancelled: async (recordId, tx) => {
-        const execDb = tx || db;
-        await execDb.update(scanArtifactIntents).set({ state: "cancelled" })
+        await tx.update(scanArtifactIntents).set({ state: "cancelled" })
           .where(and(eq(scanArtifactIntents.scanRecordId, recordId), eq(scanArtifactIntents.state, "pending")));
       },
       listIntentsForScan: async (recordId) => {
@@ -258,34 +248,31 @@ export const scansRouter = router({
         await db.update(scanArtifactIntents).set({ cleanupComplete: 1 }).where(eq(scanArtifactIntents.id, intentId));
       },
       createCleanupIntentsForArtifacts: async (userId, artifacts, tx) => {
-        const execDb = tx || db;
         const intents: ArtifactIntent[] = [];
         for (const art of artifacts) {
           if (art.storageKey.startsWith("pending:")) continue;
           const intentId = crypto.randomUUID();
-          await execDb.insert(scanArtifactIntents).values({
+          await tx.insert(scanArtifactIntents).values({
             id: intentId,
-            scanRecordId: null, // Detached so it survives scan deletion
-            userId: userId,
+            scanRecordId: null,
+            userId,
             artifactType: art.artifactType as any,
             storageKey: art.storageKey,
             displacedStorageKey: null,
-            state: "cancelled", // Legacy/Active artifacts just need to be deleted
+            state: "cancelled",
             cleanupComplete: 0,
             retryCount: 0,
           });
-          intents.push({
-            id: intentId, scanRecordId: null, userId, artifactType: art.artifactType as any,
-            storageKey: art.storageKey, displacedStorageKey: null, state: "cancelled", expectedRevision: null, cleanupComplete: 0
-          });
+          intents.push({ id: intentId, scanRecordId: null, userId, artifactType: art.artifactType as any, storageKey: art.storageKey, displacedStorageKey: null, state: "cancelled", expectedRevision: null, cleanupComplete: 0 });
         }
         return intents;
-      }
+      },
     });
   }),
 
   deleteAll: protectedProcedure.input(z.object({ confirmation: z.literal("DELETE_ALL_RESEARCH_HISTORY") })).mutation(async ({ ctx }) => {
-    const db = await getDb(); if (!db) throw new Error("Scan history database is unavailable.");
+    const db = await getDb();
+    if (!db) throw new Error("Scan history database is unavailable.");
 
     const deps = {
       listOwnedScans: async (userId: number) => {
@@ -294,21 +281,25 @@ export const scansRouter = router({
         const artifacts = await db.select({ id: scanArtifacts.id, scanRecordId: scanArtifacts.scanRecordId, storageKey: scanArtifacts.storageKey, artifactType: scanArtifacts.artifactType }).from(scanArtifacts).where(inArray(scanArtifacts.scanRecordId, records.map(record => record.id)));
         return records.map(record => ({ ...record, artifacts: artifacts.filter(artifact => artifact.scanRecordId === record.id).map(({ scanRecordId: _scanRecordId, ...artifact }) => artifact) }));
       },
+      findOwnedScanById: async (userId: number, recordId: number, tx: DbTx) => {
+        // Match registerArtifact/deleteOne lock order: scan first, then artifacts/intents.
+        // @ts-ignore Drizzle's MySQL builder supports FOR UPDATE at runtime.
+        const [record] = await (tx.select({ id: scanRecords.id }).from(scanRecords).where(and(eq(scanRecords.userId, userId), eq(scanRecords.id, recordId))) as any).for("update").limit(1);
+        if (!record) return undefined;
+        // @ts-ignore Drizzle's MySQL builder supports FOR UPDATE at runtime.
+        const artifacts = await (tx.select({ id: scanArtifacts.id, storageKey: scanArtifacts.storageKey, artifactType: scanArtifacts.artifactType }).from(scanArtifacts).where(eq(scanArtifacts.scanRecordId, record.id)) as any).for("update");
+        return { ...record, artifacts };
+      },
       deleteStoredArtifact: storageDelete,
       deleteArtifactMetadata: async (recordId: number, tx: DbTx) => {
-        const execDb = tx || db;
-        await execDb.delete(scanArtifacts).where(eq(scanArtifacts.scanRecordId, recordId));
+        await tx.delete(scanArtifacts).where(eq(scanArtifacts.scanRecordId, recordId));
       },
       deleteScanMetadata: async (recordId: number, tx: DbTx) => {
-        const execDb = tx || db;
-        await execDb.delete(scanRecords).where(eq(scanRecords.id, recordId));
+        await tx.delete(scanRecords).where(eq(scanRecords.id, recordId));
       },
-      runInTransaction: async <T>(callback: (tx: DbTx) => Promise<T>) => {
-        return await db.transaction(callback);
-      },
+      runInTransaction: async <T>(callback: (tx: DbTx) => Promise<T>) => db.transaction(callback),
       markIntentsCancelled: async (recordId: number, tx: DbTx) => {
-        const execDb = tx || db;
-        await execDb.update(scanArtifactIntents).set({ state: "cancelled" })
+        await tx.update(scanArtifactIntents).set({ state: "cancelled" })
           .where(and(eq(scanArtifactIntents.scanRecordId, recordId), eq(scanArtifactIntents.state, "pending")));
       },
       listIntentsForScan: async (recordId: number) => {
@@ -318,15 +309,14 @@ export const scansRouter = router({
         await db.update(scanArtifactIntents).set({ cleanupComplete: 1 }).where(eq(scanArtifactIntents.id, intentId));
       },
       createCleanupIntentsForArtifacts: async (userId: number, artifacts: OwnedArtifact[], tx: DbTx) => {
-        const execDb = tx || db;
         const intents: ArtifactIntent[] = [];
         for (const art of artifacts) {
           if (art.storageKey.startsWith("pending:")) continue;
           const intentId = crypto.randomUUID();
-          await execDb.insert(scanArtifactIntents).values({
+          await tx.insert(scanArtifactIntents).values({
             id: intentId,
             scanRecordId: null,
-            userId: userId,
+            userId,
             artifactType: art.artifactType as any,
             storageKey: art.storageKey,
             displacedStorageKey: null,
@@ -334,15 +324,12 @@ export const scansRouter = router({
             cleanupComplete: 0,
             retryCount: 0,
           });
-          intents.push({
-            id: intentId, scanRecordId: null, userId, artifactType: art.artifactType as any,
-            storageKey: art.storageKey, displacedStorageKey: null, state: "cancelled", expectedRevision: null, cleanupComplete: 0
-          });
+          intents.push({ id: intentId, scanRecordId: null, userId, artifactType: art.artifactType as any, storageKey: art.storageKey, displacedStorageKey: null, state: "cancelled", expectedRevision: null, cleanupComplete: 0 });
         }
         return intents;
-      }
+      },
     };
 
-    return deleteAllOwnedScans(ctx.user.id, deps as any);
+    return deleteAllOwnedScans(ctx.user.id, deps);
   }),
 });

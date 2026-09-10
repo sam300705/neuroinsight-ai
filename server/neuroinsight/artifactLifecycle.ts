@@ -44,6 +44,7 @@ type DeleteOneDependencies = {
 
 type DeleteAllDependencies = {
   listOwnedScans: (userId: number) => Promise<OwnedScan[]>;
+  findOwnedScanById: (userId: number, recordId: number, tx: DbTx) => Promise<OwnedScan | undefined>;
   deleteStoredArtifact: (storageKey: string) => Promise<void>;
   deleteArtifactMetadata: (scanRecordId: number, tx?: DbTx) => Promise<void>;
   deleteScanMetadata: (scanRecordId: number, tx?: DbTx) => Promise<void>;
@@ -160,8 +161,9 @@ export async function deleteAllOwnedScans(userId: number, dependencies: DeleteAl
   for (const scanRef of records) {
     let cleanupIntents: ArtifactIntent[] = [];
     const deleted = await dependencies.runInTransaction(async (tx) => {
-      const recordsFresh = await dependencies.listOwnedScans(userId);
-      const record = recordsFresh.find(candidate => candidate.id === scanRef.id);
+      // Re-read and lock exactly this owned scan inside the transaction. Using the normal DB
+      // handle here would allow a concurrent artifact replacement to escape the cleanup snapshot.
+      const record = await dependencies.findOwnedScanById(userId, scanRef.id, tx);
       if (!record) return false;
 
       cleanupIntents = await dependencies.createCleanupIntentsForArtifacts(userId, record.artifacts, tx);

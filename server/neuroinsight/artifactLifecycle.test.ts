@@ -123,6 +123,7 @@ describe("deleteOwnedScan", () => {
 describe("deleteAllOwnedScans", () => {
   const dummyDependencies = () => ({
     listOwnedScans: vi.fn(),
+    findOwnedScanById: vi.fn(),
     deleteStoredArtifact: vi.fn().mockResolvedValue(undefined),
     deleteArtifactMetadata: vi.fn(),
     deleteScanMetadata: vi.fn(),
@@ -133,12 +134,16 @@ describe("deleteAllOwnedScans", () => {
     createCleanupIntentsForArtifacts: vi.fn().mockResolvedValue([]),
   });
 
-  it("purges only the current user's listed metadata records and cleans known active objects", async () => {
+  it("locks and purges only the current user's listed records with their fresh artifact pointers", async () => {
     const deps = dummyDependencies();
-    deps.listOwnedScans.mockResolvedValue([
-      { id: 4, artifacts: [{ id: 11, artifactType: "grad_cam", storageKey: key("grad_cam.png") }] },
+    const records = [
+      { id: 4, artifacts: [{ id: 11, artifactType: "grad_cam", storageKey: key("stale-snapshot.png") }] },
       { id: 9, artifacts: [] },
-    ]);
+    ];
+    deps.listOwnedScans.mockResolvedValue(records);
+    deps.findOwnedScanById
+      .mockResolvedValueOnce({ id: 4, artifacts: [{ id: 12, artifactType: "grad_cam", storageKey: key("grad_cam.png") }] })
+      .mockResolvedValueOnce({ id: 9, artifacts: [] });
     deps.createCleanupIntentsForArtifacts
       .mockResolvedValueOnce([{
         id: "cleanup-1", scanRecordId: null, userId: 1, artifactType: "grad_cam",
@@ -150,10 +155,19 @@ describe("deleteAllOwnedScans", () => {
     const result = await deleteAllOwnedScans(1, deps as any);
 
     expect(result).toEqual({ deletedCount: 2 });
+    expect(deps.findOwnedScanById).toHaveBeenNthCalledWith(1, 1, 4, expect.anything());
+    expect(deps.findOwnedScanById).toHaveBeenNthCalledWith(2, 1, 9, expect.anything());
+    expect(deps.createCleanupIntentsForArtifacts).toHaveBeenNthCalledWith(
+      1,
+      1,
+      [{ id: 12, artifactType: "grad_cam", storageKey: key("grad_cam.png") }],
+      expect.anything(),
+    );
     expect(deps.markIntentsCancelled).toHaveBeenCalledTimes(2);
     expect(deps.deleteArtifactMetadata).toHaveBeenCalledTimes(2);
     expect(deps.deleteScanMetadata).toHaveBeenCalledTimes(2);
     expect(deps.deleteStoredArtifact).toHaveBeenCalledWith(key("grad_cam.png"));
+    expect(deps.deleteStoredArtifact).not.toHaveBeenCalledWith(key("stale-snapshot.png"));
   });
 });
 
