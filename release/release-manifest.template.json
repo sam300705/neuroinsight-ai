@@ -90,6 +90,12 @@
     "raw_imaging_data_included": false,
     "slsa_attestation_claimed": false
   },
+  "operational_slos": {
+    "schema_version": "neuroinsight-operational-slos/v1",
+    "status": "targets_declared_not_production_certified",
+    "opentelemetry_export": "not_configured",
+    "activation_gate": "Configure a privacy-reviewed telemetry destination, retention/access policy, alert ownership, and measured production-like window before claiming SLO attainment."
+  },
   "database_migration_head": "0006_restore_referential_guards",
   "artifact_policy": {
     "raw_upload_persistence": false,
