@@ -10,6 +10,7 @@ const expect = (condition, message) => {
 };
 
 const manifest = readJson("release/release-manifest.template.json");
+const modelRegistry = readJson("models/EXP-005/model-manifest.json");
 const modelCard = read("docs/MODEL_CARD.md");
 const capabilityManifest = read("docs/CAPABILITY_MANIFEST.md");
 const evidenceLedger = read("client/src/lib/evidenceLedger.ts");
@@ -30,6 +31,18 @@ expect(manifest.mode_a?.calibration?.abstention_threshold === 0.55, "release man
 expect(manifest.mode_b?.status === "unavailable", "Mode B must fail closed until its separate evidence gate is met");
 expect(manifest.trust_policy?.aggregate_trust_score === null, "release truth must not collapse multidimensional evidence into an aggregate trust score");
 expect(manifest.database_migration_head === "0006_restore_referential_guards", "release manifest must require the corrective 0006 migration head");
+
+expect(modelRegistry.experiment_id === manifest.mode_a.experiment_id, "model registry experiment id differs from release manifest");
+expect(modelRegistry.model_version === manifest.mode_a.model_version, "model registry version differs from release manifest");
+expect(modelRegistry.architecture === manifest.mode_a.architecture, "model registry architecture differs from release manifest");
+expect(modelRegistry.contract?.image_size === manifest.mode_a.input_image_size, "model registry input size differs from release manifest");
+expect(modelRegistry.evaluation?.accuracy === manifest.mode_a.held_out.accuracy, "model registry accuracy differs from release manifest");
+expect(modelRegistry.evaluation?.macro_f1 === manifest.mode_a.held_out.macro_f1, "model registry macro-F1 differs from release manifest");
+expect(modelRegistry.calibration?.temperature === manifest.mode_a.calibration.temperature, "model registry calibration temperature differs from release manifest");
+expect(modelRegistry.calibration?.abstention_threshold === manifest.mode_a.calibration.abstention_threshold, "model registry abstention threshold differs from release manifest");
+expect(modelRegistry.promotion_policy?.automatic_replacement === false, "model registry must prohibit automatic model replacement");
+expect(modelRegistry.evaluation?.external_validation === false, "EXP-005 registry must not claim external validation");
+expect(modelRegistry.evaluation?.patient_case_disjoint === false, "EXP-005 registry must not claim patient/case-disjoint evidence");
 
 for (const phrase of [
   "EXP-005",
