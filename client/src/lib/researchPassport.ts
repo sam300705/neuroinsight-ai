@@ -22,17 +22,23 @@ export const EXP005_VALIDATION_EVIDENCE = Object.freeze({
 
 export type RepeatabilityOutcome = {
   requestId: string;
+  scanId: string;
   status: InferenceAnalysisResponse["status"];
   predictedClass: InferenceAnalysisResponse["predicted_class"];
   confidence: number | null;
   calibrated: boolean;
+  gradCamAvailable: boolean;
 };
 
 export type RepeatabilityEvidence = {
   runs: number;
+  uniqueRequestIds: boolean;
+  uniqueScanIds: boolean;
   stableClass: boolean;
   stableStatus: boolean;
   stableCalibration: boolean;
+  attributionAvailable: boolean;
+  stableAttribution: boolean;
   confidenceSpread: number | null;
   tolerance: number;
   passed: boolean;
@@ -105,6 +111,7 @@ export function evaluateRepeatability(
 
   const outcomes: RepeatabilityOutcome[] = responses.map(response => ({
     requestId: response.request_id,
+    scanId: response.scan_id,
     status: response.status,
     predictedClass: response.predicted_class,
     confidence:
@@ -112,28 +119,44 @@ export function evaluateRepeatability(
         ? response.model_confidence_score
         : null,
     calibrated: Boolean(response.calibrated),
+    gradCamAvailable: Boolean(response.grad_cam_png_base64),
   }));
 
   const baseline = outcomes[0];
+  const uniqueRequestIds = new Set(outcomes.map(item => item.requestId)).size === outcomes.length;
+  const uniqueScanIds = new Set(outcomes.map(item => item.scanId)).size === outcomes.length;
   const stableClass = outcomes.every(item => item.predictedClass === baseline.predictedClass);
   const stableStatus = outcomes.every(item => item.status === baseline.status);
   const stableCalibration = outcomes.every(item => item.calibrated === baseline.calibrated);
+  const attributionAvailable = outcomes.every(item => item.gradCamAvailable);
+  const baselineAttribution = responses[0].grad_cam_png_base64 ?? null;
+  const stableAttribution =
+    attributionAvailable &&
+    Boolean(baselineAttribution) &&
+    responses.every(response => response.grad_cam_png_base64 === baselineAttribution);
   const confidences = outcomes.map(item => item.confidence);
   const confidenceSpread = confidences.every(value => typeof value === "number")
     ? Math.max(...(confidences as number[])) - Math.min(...(confidences as number[]))
     : null;
   const passed =
+    uniqueRequestIds &&
+    uniqueScanIds &&
     stableClass &&
     stableStatus &&
     stableCalibration &&
+    stableAttribution &&
     confidenceSpread !== null &&
     confidenceSpread <= REPEATABILITY_TOLERANCE;
 
   return {
     runs: outcomes.length,
+    uniqueRequestIds,
+    uniqueScanIds,
     stableClass,
     stableStatus,
     stableCalibration,
+    attributionAvailable,
+    stableAttribution,
     confidenceSpread,
     tolerance: REPEATABILITY_TOLERANCE,
     passed,
