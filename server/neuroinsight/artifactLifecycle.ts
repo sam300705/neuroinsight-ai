@@ -46,8 +46,8 @@ type DeleteAllDependencies = {
   listOwnedScans: (userId: number) => Promise<OwnedScan[]>;
   findOwnedScanById: (userId: number, recordId: number, tx: DbTx) => Promise<OwnedScan | undefined>;
   deleteStoredArtifact: (storageKey: string) => Promise<void>;
-  deleteArtifactMetadata: (scanRecordId: number, tx?: DbTx) => Promise<void>;
-  deleteScanMetadata: (scanRecordId: number, tx?: DbTx) => Promise<void>;
+  deleteArtifactMetadata: (scanRecordId: number, tx: DbTx) => Promise<void>;
+  deleteScanMetadata: (scanRecordId: number, tx: DbTx) => Promise<void>;
   runInTransaction: <T>(callback: (tx: DbTx) => Promise<T>) => Promise<T>;
   markIntentsCancelled: (scanRecordId: number, tx: DbTx) => Promise<void>;
   listIntentsForScan: (scanRecordId: number) => Promise<ArtifactIntent[]>;
