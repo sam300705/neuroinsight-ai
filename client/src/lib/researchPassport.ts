@@ -10,7 +10,7 @@ const EXP005_MODEL_VERSION = "bdneuro-v7-resnet50-head-only-exp005";
 export const EXP005_VALIDATION_EVIDENCE = Object.freeze({
   modelVersion: EXP005_MODEL_VERSION,
   evidenceScope: "same_dataset_image_level_validation_only" as const,
-  temperature: 0.6899,
+  temperature: 0.689875,
   eceBefore: 0.0885,
   eceAfter: 0.0251,
   brierBefore: 0.279,
