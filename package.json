@@ -19,7 +19,7 @@
     "test:e2e:passport-local": "node scripts/verify-passport-local.mjs",
     "test:e2e:hindi-real-inference": "node scripts/verify-hindi-real-inference.mjs",
     "test:smoke:inference": "node scripts/verify-inference-endpoint.mjs",
-    "release:verify": "node scripts/verify-release-truth.mjs",
+    "release:verify": "node scripts/verify-release-truth.mjs && node scripts/verify-advanced-evidence.mjs",
     "release:manifest": "node scripts/generate-release-manifest.mjs",
     "release:bundle": "node scripts/build-reproducibility-bundle.mjs",
     "research:reliability": "tsx scripts/analyze-reliability-bundle.ts",
