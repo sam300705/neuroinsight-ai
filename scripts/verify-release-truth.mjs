@@ -16,8 +16,10 @@ const modelCard = read("docs/MODEL_CARD.md");
 const capabilityManifest = read("docs/CAPABILITY_MANIFEST.md");
 const evidenceLedger = read("client/src/lib/evidenceLedger.ts");
 const evidenceGraph = read("client/src/lib/evidenceGraph.ts");
-const passport = read("client/src/lib/researchPassport.ts");
+const passportV1 = read("client/src/lib/researchPassport.ts");
+const passportV2 = read("client/src/lib/researchPassportV2.ts");
 const passportAttestation = read("server/neuroinsight/passportAttestation.ts");
+const experimentComparison = read("client/src/lib/experimentComparison.ts");
 const reliabilityMetrics = read("client/src/lib/reliabilityMetrics.ts");
 const reliabilityCli = read("scripts/analyze-reliability-bundle.ts");
 const architecture = read("docs/ARCHITECTURE.md");
@@ -88,14 +90,30 @@ expect(evidenceGraph.includes('id: "mode-b-gate"'), "evidence graph must include
 expect(evidenceGraph.includes('id: "passport-attestation"'), "evidence graph must include the passport attestation boundary");
 expect(evidenceGraph.includes("aggregate_trust_score: null"), "evidence graph must not emit an aggregate trust score");
 
+expect(passportV1.includes('schema_version: "neuroinsight-research-passport/v1"'), "Research Passport v1 implementation is missing");
+expect(passportV1.includes(`temperature: ${manifest.mode_a.calibration.temperature}`), "Research Passport v1 calibration temperature differs from canonical release evidence");
+expect(passportV1.includes(`abstentionThreshold: ${manifest.mode_a.calibration.abstention_threshold}`), "Research Passport v1 abstention threshold differs from canonical release evidence");
+expect(passportV1.includes("eceBefore: 0.0885") && passportV1.includes("eceAfter: 0.0251"), "Research Passport v1 ECE evidence drifted");
+expect(passportV1.includes("brierBefore: 0.279") && passportV1.includes("brierAfter: 0.266"), "Research Passport v1 Brier evidence drifted");
+
 for (const version of manifest.research_passport_versions) {
-  expect(passport.includes(version), `research passport implementation does not contain declared schema ${version}`);
+  expect(passportV1.includes(version) || passportV2.includes(version), `research passport implementation does not contain declared schema ${version}`);
 }
+expect(manifest.passport_v2?.status === "implemented_additive", "Passport v2 must remain additive rather than silently breaking v1 verification");
+expect(passportV2.includes("analysis_receipt_sha256"), "Passport v2 must bind receipt presence by digest without exposing the receipt");
+expect(passportV2.includes('public_key_attestation_status: "conditional_not_issued"'), "Passport v2 must not claim an issued public-key attestation yet");
+expect(passportV2.includes('mode_b_status: "unavailable"'), "Passport v2 must preserve Mode B unavailability");
 
 expect(manifest.passport_attestation?.status === "conditional", "passport public-key attestation must remain conditional until trusted receipt binding is deployed");
 expect(passportAttestation.includes(manifest.passport_attestation?.schema_version), "passport attestation implementation schema differs from release manifest");
 expect(passportAttestation.includes('algorithm: "Ed25519"'), "passport attestation implementation must remain Ed25519");
 expect(passportAttestation.includes("analysisReceiptSha256"), "passport attestation must bind an analysis-receipt digest before release activation");
+
+expect(manifest.experiment_comparison?.automatic_promotion === false, "experiment comparison must prohibit automatic promotion");
+expect(experimentComparison.includes(manifest.experiment_comparison?.schema_version), "experiment comparison schema differs from release manifest");
+expect(experimentComparison.includes('automaticPromotionAllowed: false'), "experiment comparison implementation must prohibit automatic promotion");
+expect(experimentComparison.includes('recommendation: eligible ? "eligible_for_separate_owner_review" : "retain_incumbent"'), "experiment promotion must remain a separate owner-review decision");
+expect(experimentComparison.includes("heldOutAccuracy: 0.8099") && experimentComparison.includes("heldOutAccuracy: 0.751"), "experiment comparison held-out accuracy values drifted from the experiment ledger");
 
 expect(manifest.reliability_tooling?.status === "available_as_research_tooling", "reliability tooling must be declared as research tooling, not clinical evidence");
 for (const symbol of ["expectedCalibrationError", "topLabelBrierScore", "wilsonAccuracyInterval", "riskCoverageCurve"]) {
@@ -122,5 +140,7 @@ console.log(`Mode A: ${manifest.mode_a.experiment_id} (${manifest.mode_a.model_v
 console.log(`Mode B: ${manifest.mode_b.status}`);
 console.log(`Evidence ledger: ${manifest.evidence_ledger_version}`);
 console.log(`Evidence graph: ${manifest.evidence_graph_version}`);
+console.log(`Passport versions: ${manifest.research_passport_versions.join(", ")}`);
 console.log(`Passport attestation: ${manifest.passport_attestation.status}`);
+console.log(`Experiment decision: ${manifest.experiment_comparison.current_decision}`);
 console.log(`Migration head: ${manifest.database_migration_head}`);
