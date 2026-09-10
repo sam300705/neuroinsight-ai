@@ -1,0 +1,62 @@
+{
+  "schema_version": "neuroinsight-release-manifest/v1",
+  "scope": "academic_non_clinical_research",
+  "generated_fields": [
+    "source_commit",
+    "generated_at",
+    "package_version"
+  ],
+  "mode_a": {
+    "status": "available",
+    "experiment_id": "EXP-005",
+    "model_version": "bdneuro-v7-resnet50-head-only-exp005",
+    "architecture": "resnet50",
+    "input_image_size": 160,
+    "classes": [
+      "glioma",
+      "meningioma",
+      "no_tumor",
+      "pituitary"
+    ],
+    "evidence_scope": "same_dataset_image_level_held_out_only",
+    "held_out": {
+      "accuracy": 0.8099,
+      "macro_f1": 0.808,
+      "weighted_f1": 0.811
+    },
+    "calibration": {
+      "temperature": 0.689875,
+      "abstention_threshold": 0.55
+    },
+    "unsupported_claims": [
+      "patient_independent_performance",
+      "external_validation",
+      "clinical_performance",
+      "medical_probability",
+      "diagnosis",
+      "physical_measurement"
+    ]
+  },
+  "mode_b": {
+    "status": "unavailable",
+    "reason": "No accepted full-volume case-disjoint segmentation model and evaluation evidence is configured."
+  },
+  "evidence_ledger_version": "neuroinsight-evidence-ledger/2026-09-11",
+  "research_passport_versions": [
+    "neuroinsight-research-passport/v1"
+  ],
+  "database_migration_head": "0006_restore_referential_guards",
+  "artifact_policy": {
+    "raw_upload_persistence": false,
+    "derived_artifact_cleanup": "durable_intent_reconciliation"
+  },
+  "trust_policy": {
+    "aggregate_trust_score": null,
+    "evidence_states": [
+      "demonstrated",
+      "conditional",
+      "not_established"
+    ]
+  },
+  "release_notice": "This system is not a medical diagnosis and must not replace a qualified radiologist."
+}
