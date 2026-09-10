@@ -5,6 +5,20 @@ import {
 } from "@/lib/inferenceApi";
 
 const REPEATABILITY_TOLERANCE = 1e-6;
+const EXP005_MODEL_VERSION = "bdneuro-v7-resnet50-head-only-exp005";
+
+export const EXP005_VALIDATION_EVIDENCE = Object.freeze({
+  modelVersion: EXP005_MODEL_VERSION,
+  evidenceScope: "same_dataset_image_level_validation_only" as const,
+  temperature: 0.6899,
+  eceBefore: 0.0885,
+  eceAfter: 0.0251,
+  brierBefore: 0.279,
+  brierAfter: 0.266,
+  abstentionThreshold: 0.55,
+  validationCoverage: 0.8821,
+  acceptedSampleAccuracy: 0.8535,
+});
 
 export type RepeatabilityOutcome = {
   requestId: string;
@@ -47,6 +61,8 @@ export type ResearchPassport = {
     uncertainty_reason: string | null;
     manual_review_recommended: boolean;
     processing_time_ms: number;
+    validation_abstention_threshold: number | null;
+    threshold_margin: number | null;
   };
   evidence: {
     grad_cam_available: boolean;
@@ -54,6 +70,7 @@ export type ResearchPassport = {
     measurement_kind: InferenceAnalysisResponse["measurement"]["kind"];
     measurement_metadata_confirmed: boolean;
     same_input_repeatability: RepeatabilityEvidence | null;
+    validation_calibration: typeof EXP005_VALIDATION_EVIDENCE | null;
   };
   explicit_non_claims: string[];
   warnings: string[];
@@ -69,6 +86,14 @@ export async function sha256File(file: Blob): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+export function validationEvidenceFor(
+  analysis: InferenceAnalysisResponse,
+): typeof EXP005_VALIDATION_EVIDENCE | null {
+  return analysis.model_version === EXP005_MODEL_VERSION && analysis.calibrated
+    ? EXP005_VALIDATION_EVIDENCE
+    : null;
 }
 
 export function evaluateRepeatability(
@@ -155,6 +180,11 @@ export function buildResearchPassport(input: {
   generatedAt?: string;
 }): ResearchPassport {
   const { analysis } = input;
+  const validationCalibration = validationEvidenceFor(analysis);
+  const confidence = typeof analysis.model_confidence_score === "number"
+    ? analysis.model_confidence_score
+    : null;
+  const threshold = validationCalibration?.abstentionThreshold ?? null;
   return {
     schema_version: "neuroinsight-research-passport/v1",
     generated_at: input.generatedAt ?? new Date().toISOString(),
@@ -172,14 +202,13 @@ export function buildResearchPassport(input: {
       status: analysis.status,
       model_version: analysis.model_version,
       predicted_class: analysis.predicted_class,
-      model_confidence_score:
-        typeof analysis.model_confidence_score === "number"
-          ? analysis.model_confidence_score
-          : null,
+      model_confidence_score: confidence,
       calibrated: Boolean(analysis.calibrated),
       uncertainty_reason: analysis.uncertainty_reason ?? null,
       manual_review_recommended: analysis.manual_review_recommended,
       processing_time_ms: analysis.processing_time_ms,
+      validation_abstention_threshold: threshold,
+      threshold_margin: confidence !== null && threshold !== null ? confidence - threshold : null,
     },
     evidence: {
       grad_cam_available: Boolean(analysis.grad_cam_png_base64),
@@ -187,6 +216,7 @@ export function buildResearchPassport(input: {
       measurement_kind: analysis.measurement.kind,
       measurement_metadata_confirmed: analysis.measurement.metadata_confirmed,
       same_input_repeatability: input.repeatability ?? null,
+      validation_calibration: validationCalibration,
     },
     explicit_non_claims: [
       "No clinical diagnosis or treatment recommendation is claimed.",
