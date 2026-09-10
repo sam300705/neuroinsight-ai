@@ -7,7 +7,9 @@ const root = resolve(process.cwd());
 const outputPath = resolve(root, process.argv[2] || "release/reproducibility-bundle.generated.json");
 const artifactPaths = [
   "release/release-manifest.template.json",
+  "release/operational-slos.json",
   "models/EXP-005/model-manifest.json",
+  "research/robustness-protocol.json",
   "EXPERIMENTS.md",
   "docs/MODEL_CARD.md",
   "docs/CAPABILITY_MANIFEST.md",
@@ -19,6 +21,8 @@ const artifactPaths = [
   "client/src/lib/researchPassportV2.ts",
   "client/src/lib/experimentComparison.ts",
   "client/src/lib/reliabilityMetrics.ts",
+  "client/src/lib/robustnessEvidence.ts",
+  "server/neuroinsight/passportAttestation.ts",
   "drizzle/meta/_journal.json",
   "pnpm-lock.yaml",
   "backend/uv.lock"
@@ -52,7 +56,10 @@ const bundle = {
     mode_b_status: releaseManifest.mode_b.status,
     evidence_ledger_version: releaseManifest.evidence_ledger_version,
     evidence_graph_version: releaseManifest.evidence_graph_version,
+    research_passport_versions: releaseManifest.research_passport_versions,
     database_migration_head: releaseManifest.database_migration_head,
+    robustness_release_state: releaseManifest.robustness_research.release_state,
+    operational_slo_status: releaseManifest.operational_slos.status,
   },
   model: {
     manifest_schema: modelManifest.schema_version,
@@ -78,9 +85,11 @@ const bundle = {
     external_validation: false,
     patient_level_performance: false,
     mode_b_available: false,
+    robustness_established: false,
+    slo_attainment_certified: false,
     aggregate_trust_score: null
   },
-  note: "This bundle fingerprints declared source evidence and dependency locks. It supports reproducibility/audit comparison but is not a SLSA attestation, clinical validation record, or proof that external services were configured correctly."
+  note: "This bundle fingerprints declared source evidence and dependency locks. It supports reproducibility/audit comparison but is not a SLSA attestation, clinical validation record, robustness certification, SLO certification, or proof that external services were configured correctly."
 };
 
 writeFileSync(outputPath, `${JSON.stringify(bundle, null, 2)}\n`, "utf8");
