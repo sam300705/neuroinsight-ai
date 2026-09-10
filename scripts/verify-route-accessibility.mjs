@@ -3,7 +3,7 @@ import { chromium, expect } from "@playwright/test";
 
 const baseUrl = process.env.E2E_BASE_URL ?? "http://127.0.0.1:3000";
 const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
-const routes = ["/", "/analyse", "/results", "/history", "/methodology", "/performance", "/limitations", "/responsible-use", "/verify", "/about"];
+const routes = ["/", "/analyse", "/results", "/history", "/methodology", "/performance", "/evidence", "/limitations", "/responsible-use", "/verify", "/about"];
 
 const browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}), args: ["--no-sandbox"] });
 try {
@@ -21,7 +21,7 @@ try {
     await page.close();
   }
   await context.close();
-  console.log("Cross-route accessibility audit passed: WCAG 2 A/AA axe checks and keyboard skip-link focus passed on all primary routes, including Responsible Use and the local Research Passport verifier.");
+  console.log("Cross-route accessibility audit passed: WCAG 2 A/AA axe checks and keyboard skip-link focus passed on all primary routes, including Evidence Ledger, Responsible Use, and the local Research Passport verifier.");
 } finally {
   await browser.close();
 }
