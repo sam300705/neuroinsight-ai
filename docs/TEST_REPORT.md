@@ -1,27 +1,64 @@
 # Verification Report
 
-**Verification date:** 2026-08-22. The managed dashboard, TypeScript server, FastAPI service, reproducibility utilities, and external ONNX service were checked after the real Mode A integration, report-route correction, browser-level upload checks, and protected derived-artifact wiring. No test or document in this report treats any model output as clinical, diagnostic, patient-level, or externally validated.
+**Current verification snapshot:** 2026-09-11  
+**Scope:** non-clinical academic/research software only.
 
-| Layer | Command or method | Actual result |
-|---|---|---|
-| FastAPI service | `PYTHONPATH=. pytest -q` | **12 passed**. Coverage includes upload rejection, configured-origin CORS behavior, measurement safeguards, English/Hindi safety refusals, real-response schema compatibility, and PDF report contents/artifact pages. |
-| Data utilities | `PYTHONPATH=. pytest -q ml/tests` | **4 passed**. Covers exact-duplicate safeguards, split metadata, NIfTI modality grouping, label linking, and AppleDouble exclusion. |
-| Typed application | `pnpm check` | **Passed** with no TypeScript errors. |
-| Node and frontend procedures | `pnpm test` | **21 passed**. Covers auth logout; scan-result, artifact, and delete-confirmation validation; local upload validation; corrupt-upload and real-result response mapping; report helper serialization; configured-endpoint health; English/Hindi route-copy safeguards; bilingual academic, Grad-CAM, and glioma-scope safety notices; and localized real-result persistence controls. |
-| Browser-level flow | `pnpm test:e2e:corrupt-upload`, `pnpm test:e2e:real-inference`, and `pnpm test:e2e:accessibility` | **Passed**. The corruption test proves local signature rejection disables submission. The real-inference test submits one lawful public fixed-split image and verifies the experimental result, exact safety warning, non-medical confidence wording, and protected-save consent control without asserting class correctness. The accessibility test verifies keyboard skip navigation, labelled MRI upload access, and text plus disabled-state error communication. |
-| Hindi real-inference flow | `pnpm test:e2e:hindi-real-inference` | **Passed**. The test changes the UI to Hindi, submits one lawful public fixed-split image, and verifies the localized experimental-result and protected-save controls. The exact mandatory English non-diagnostic notice remains visible. |
-| Published live integration | `E2E_BASE_URL=https://neuroaiapp-gtbxy6cw.manus.space pnpm test:e2e:real-inference` | **Passed**. The published dashboard reached the CORS-restricted Vercel ONNX service and rendered the real experimental result plus protected-save consent control. This is a connectivity check only and does not assert class correctness, clinical validity, or authenticated artifact retrieval. |
-| Cross-route accessibility | `pnpm test:e2e:accessibility-routes` | **Passed**. Axe-core WCAG 2 A/AA rules, including colour contrast, pass on overview, analysis, results, history, methodology, performance, limitations, and about. The test also verifies initial keyboard focus reaches the skip-to-main-content link on every route. Browser zoom is not restricted. |
-| Production bundle | `pnpm build` | **Passed**. The bundle emits a size warning because the optional 3D renderer increases the main JavaScript chunk to approximately 1.40 MB; this is a performance follow-up, not a build failure. |
-| Python package build | `uv build --wheel --out-dir /tmp/neuroinsight-wheelcheck` from `backend/` | **Passed**. The FastAPI service package builds as a standard wheel after explicit setuptools metadata was added. |
-| Visual review | Desktop and mobile screenshots of overview, analysis, results, and history | Confirmed readable global disclaimer, responsive navigation, scoped upload guidance, private history empty state, and research-safe no-analysis result state. Detailed findings are in `docs/VERIFICATION_LOG.md`. |
+> **This system is not a medical diagnosis and must not replace a qualified radiologist.**
 
-## Actual model and deployment evidence
+## Exact application-code baseline
 
-Mode A uses EXP-005: a ResNet50 head-only classifier trained on the authorised BDNeuro-MRI v7 fixed image-level split after a conservative duplicate-similarity sanitization policy. Its held-out fixed-split image-level test accuracy is `0.8099`, macro-F1 is `0.8080`, and validation-only temperature scaling selected temperature `0.689875` and abstention threshold `0.55`. These figures are not patient-independent, clinical, external, or diagnostic performance evidence.
+Commit `e60272a44cb771624d4c1eff04336cb35843840f` passed GitHub Actions workflow run `34526092850` (#196) end to end.
 
-The Vercel ONNX service passed health, readiness, CORS preflight, corrupt-upload rejection, real inference on one public fixed-split image, and a two-page report generated from its returned real Grad-CAM. That image’s actual predicted class was meningioma despite its glioma label. The system preserves this failure as experimental evidence; browser tests deliberately do not encode it as an expected correct classification. The Grad-CAM is a coarse final-layer classifier attribution, not a tumor boundary.
+| Gate | Result |
+|---|---|
+| TypeScript | `pnpm check` passed |
+| Node/frontend/server tests | **260/260 passed** across 45 Vitest files |
+| TypeScript selected coverage | **94.69% statements/lines, 80.52% branches, 100% functions** |
+| Production build | passed |
+| Initial JS bundle | **477,116 bytes**, below enforced 768,000-byte budget |
+| Node production dependency audit | no known vulnerabilities |
+| Corrupt-upload browser check | passed; submission blocked before inference |
+| Accessibility | primary routes passed axe WCAG 2 A/AA plus keyboard skip-link checks |
+| Repository raw-data/secret guard | passed |
+| Python lock consistency | passed |
+| FastAPI/support tests | **143/143 passed** |
+| Python critical coverage | all configured per-module thresholds passed |
+| ML/data tests | **8/8 passed** |
+| Python dependency audit | no known vulnerabilities |
+| Backend SBOM | generated and uploaded by CI |
+| Backend container | built and passed credential-free `/health` smoke |
 
-Mode B remains unavailable. The earlier small, selected-slice 2D segmentation smoke run is not a full-volume, hidden-test, or clinical segmentation model and cannot activate masks, measurements, volume, or 3D geometry as real service outputs.
+One backend test warning remains upstream/dependency-facing: the installed FastAPI/Starlette test stack warns that the current `httpx`-based TestClient compatibility path is deprecated. It does not fail the suite and is not used as an application-runtime success condition. Dependency changes should be made only against an official compatible stack rather than suppressing this warning blindly.
 
-> **Release status:** Mode A is publicly available only as an image-level, non-clinical academic demonstration with manual review required. Mode B remains unavailable. The public-dashboard CORS configuration and live browser-to-service verification are complete. Authenticated end-to-end history re-download remains intentionally unverified because it requires a private account session.
+## Artifact lifecycle coverage
+
+The TypeScript suite covers:
+
+- owner-scoped artifact download/signing boundaries
+- rejection of metadata keys outside the authenticated namespace
+- incomplete legacy artifact denial
+- durable cleanup intent creation before metadata deletion
+- cleanup retry on provider failure
+- bulk deletion using fresh transaction-locked artifact pointers
+- stale-pending commit/cancel reconciliation
+- concurrent-finalization preservation
+- retry bookkeeping
+- legacy `pending:` placeholder compatibility
+- final schema/migration invariants for detachable cleanup intents versus protected active metadata
+- non-overlapping recovery worker scheduling
+
+## Model/service evidence
+
+Mode A remains EXP-005. Its held-out fixed-split **image-level** accuracy `0.8099`, macro-F1 `0.8080`, and weighted-F1 `0.8110` remain academic evidence only. They are not patient-independent, external, diagnostic, or clinical performance claims.
+
+The exact `e60272a` Vercel inference preview was `READY`. Fresh HTTP 200 probes passed for `/health`, `/ready`, and `/api/v1/model-info`; classification was available and segmentation unavailable. Report generation remained fail-closed without `ANALYSIS_RECEIPT_SECRET`.
+
+No recent runtime errors or unresolved preview toolbar threads were observed during the final engineering pass.
+
+## CI supply-chain follow-up
+
+Commit `c675b4d1960f35518be466c1c7b896b54a2957d7` replaces the older Node-20-targeting action pins with exact commit SHAs for current Node-24-capable releases and pins the uv binary to `0.12.13`, the version already observed to pass the full matrix. This changes CI infrastructure only, not model/application runtime behavior.
+
+## Release boundary
+
+Passing automated tests is not equivalent to production approval or clinical validation. Managed database migration execution, real authentication/signing secrets, physical storage deletion, distributed shared-state behavior, observability, merge/publication/promotion, and any clinical/external validation remain separately controlled gates in `MANUAL_GATES.md`.

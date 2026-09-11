@@ -1,11 +1,19 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { validateWithInferenceService } from "./inferenceApi";
 
 describe("configured inference endpoint", () => {
-  it("returns a healthy response from the configured validation service", async () => {
-    const base = process.env.VITE_INFERENCE_API_BASE_URL;
-    expect(base).toBeTruthy();
-    const response = await fetch(`${base!.replace(/\/$/, "")}/health`);
-    expect(response.ok).toBe(true);
-    await expect(response.json()).resolves.toMatchObject({ status: "ok", service: "neuroinsight-inference" });
-  }, 15_000);
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("fails closed without an inference-service configuration and does not submit the upload", async () => {
+    vi.stubEnv("VITE_INFERENCE_API_BASE_URL", "");
+    const fetchImpl = vi.fn();
+    const result = await validateWithInferenceService(
+      new File(["test"], "scan.jpg", { type: "image/jpeg" }),
+      "classification",
+      "request-1",
+      fetchImpl as unknown as typeof fetch,
+    );
+    expect(result).toMatchObject({ ok: false, message: expect.stringContaining("not configured") });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
 });

@@ -1,5 +1,7 @@
+import { providerBaseUrl, providerFetch } from "./providerTransport";
 import { TRPCError } from "@trpc/server";
 import { ENV } from "./env";
+import { safeErrorMetadata } from "./safeError";
 
 export type NotificationPayload = {
   title: string;
@@ -8,15 +10,14 @@ export type NotificationPayload = {
 
 const TITLE_MAX_LENGTH = 1200;
 const CONTENT_MAX_LENGTH = 20000;
+const NOTIFICATION_TIMEOUT_MS = 10_000;
 
 const trimValue = (value: string): string => value.trim();
 const isNonEmptyString = (value: unknown): value is string =>
   typeof value === "string" && value.trim().length > 0;
 
 const buildEndpointUrl = (baseUrl: string): string => {
-  const normalizedBase = baseUrl.endsWith("/")
-    ? baseUrl
-    : `${baseUrl}/`;
+  const normalizedBase = `${providerBaseUrl(baseUrl)}/`;
   return new URL(
     "webdevtoken.v1.WebDevService/SendNotification",
     normalizedBase
@@ -85,7 +86,7 @@ export async function notifyOwner(
   const endpoint = buildEndpointUrl(ENV.forgeApiUrl);
 
   try {
-    const response = await fetch(endpoint, {
+    const response = await providerFetch(endpoint, {
       method: "POST",
       headers: {
         accept: "application/json",
@@ -94,21 +95,22 @@ export async function notifyOwner(
         "connect-protocol-version": "1",
       },
       body: JSON.stringify({ title, content }),
+      signal: AbortSignal.timeout(NOTIFICATION_TIMEOUT_MS),
     });
 
     if (!response.ok) {
-      const detail = await response.text().catch(() => "");
-      console.warn(
-        `[Notification] Failed to notify owner (${response.status} ${response.statusText})${
-          detail ? `: ${detail}` : ""
-        }`
-      );
+      console.warn("[Notification] Failed to notify owner", {
+        status: response.status,
+      });
       return false;
     }
 
     return true;
   } catch (error) {
-    console.warn("[Notification] Error calling notification service:", error);
+    console.warn(
+      "[Notification] Error calling notification service",
+      safeErrorMetadata(error)
+    );
     return false;
   }
 }

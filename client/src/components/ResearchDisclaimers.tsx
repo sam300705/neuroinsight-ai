@@ -4,7 +4,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 
 export function disclaimerCopy(language: "en" | "hi") {
   if (language === "hi") return {
-    academic: "केवल अकादमिक और शोध उपयोग के लिए। यह प्रोटोटाइप चिकित्सीय निदान नहीं देता और योग्य नैदानिक समीक्षा का विकल्प नहीं है।",
+    academic: "केवल अकादमिक और शोध उपयोग के लिए। यह प्रणाली चिकित्सीय निदान नहीं है और योग्य रेडियोलॉजिस्ट का विकल्प नहीं है। This system is not a medical diagnosis and must not replace a qualified radiologist.",
     gradCam: "Grad-CAM वर्गीकार को प्रभावित करने वाले क्षेत्रों का मोटा एट्रिब्यूशन है। यह ट्यूमर की सीमा, कारणात्मक व्याख्या या शुद्धता का प्रमाण नहीं है।",
     glioma: "सेगमेंटेशन आउटपुट केवल संगत NIfTI वॉल्यूम के लिए ग्लायोमा-केंद्रित शोध दायरे में है। इसे सार्वभौमिक ब्रेन-ट्यूमर सेगमेंटेशन या चिकित्सीय निष्कर्ष के रूप में न समझें।",
   };

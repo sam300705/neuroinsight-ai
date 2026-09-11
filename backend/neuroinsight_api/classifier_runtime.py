@@ -21,6 +21,7 @@ import numpy as np
 import torch
 from PIL import Image
 from torchvision import models, transforms
+from .constants import MAX_GRAD_CAM_EDGE_PIXELS
 
 MODEL_LABELS = ["glioma", "meningioma", "notumor", "pituitary"]
 PUBLIC_LABELS = {"notumor": "no_tumor", "glioma": "glioma", "meningioma": "meningioma", "pituitary": "pituitary"}
@@ -65,6 +66,8 @@ class ExperimentalClassifier:
 
     def predict(self, payload: bytes) -> ExperimentalPrediction:
         image = Image.open(io.BytesIO(payload)).convert("RGB")
+        overlay_base = image.copy()
+        overlay_base.thumbnail((MAX_GRAD_CAM_EDGE_PIXELS, MAX_GRAD_CAM_EDGE_PIXELS), Image.Resampling.LANCZOS)
         tensor = self.transform(image).unsqueeze(0)
         activations: list[torch.Tensor] = []
         gradients: list[torch.Tensor] = []
@@ -80,12 +83,12 @@ class ExperimentalClassifier:
             logits[0, index].backward()
             weights = gradients[0].mean(dim=(2, 3), keepdim=True)
             heatmap = torch.relu((weights * activations[0]).sum(dim=1, keepdim=True))
-            heatmap = torch.nn.functional.interpolate(heatmap, size=(image.height, image.width), mode="bilinear", align_corners=False)[0, 0].detach().numpy()
+            heatmap = torch.nn.functional.interpolate(heatmap, size=(overlay_base.height, overlay_base.width), mode="bilinear", align_corners=False)[0, 0].detach().numpy()
         finally:
             forward.remove()
             backward.remove()
         heatmap = (heatmap - heatmap.min()) / max(float(heatmap.max() - heatmap.min()), 1e-8)
-        base = np.asarray(image, dtype=np.float32) / 255.0
+        base = np.asarray(overlay_base, dtype=np.float32) / 255.0
         colour = np.zeros_like(base)
         colour[..., 0] = heatmap
         colour[..., 1] = 0.15 + 0.55 * (1 - np.abs(heatmap - 0.5) * 2)

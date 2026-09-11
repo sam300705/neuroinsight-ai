@@ -1,5 +1,19 @@
 import { BarChart3, FileWarning } from "lucide-react";
 import { AcademicDisclaimer } from "@/components/ResearchDisclaimers";
+import { ExperimentArena } from "@/components/ExperimentArena";
 import { copyFor } from "@/contexts/pageCopy";
 import { useLanguage } from "@/contexts/LanguageContext";
-export default function Performance() { const { language } = useLanguage(); const text = copyFor(language).performance; return <div className="mx-auto max-w-5xl space-y-6"><div><h1 className="text-3xl font-semibold tracking-tight">{text.title}</h1><p className="mt-3 max-w-3xl leading-7 text-slate-600">{text.intro}</p></div><AcademicDisclaimer /><section className="rounded-2xl border border-amber-200 bg-amber-50 p-6"><div className="flex gap-3"><FileWarning className="size-6 shrink-0 text-amber-800" /><div><h2 className="text-lg font-semibold text-amber-950">{text.unavailable}</h2><p className="mt-2 text-sm leading-6 text-amber-900">{text.unavailableDetail}</p></div></div></section><div className="grid gap-4 sm:grid-cols-2">{text.cards.map(([title, detail], index) => <section key={title} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><BarChart3 className={`size-6 ${index === 0 ? "text-teal-700" : "text-violet-700"}`} /><h2 className="mt-3 font-semibold">{title}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{detail}</p></section>)}</div></div>; }
+
+export default function Performance() {
+  const { language } = useLanguage();
+  const text = copyFor(language).performance;
+  return (
+    <div className="mx-auto max-w-5xl space-y-6">
+      <div><h1 className="text-3xl font-semibold tracking-tight">{text.title}</h1><p className="mt-3 max-w-3xl leading-7 text-slate-600">{text.intro}</p></div>
+      <AcademicDisclaimer />
+      <section className="rounded-2xl border border-amber-200 bg-amber-50 p-6"><div className="flex gap-3"><FileWarning className="size-6 shrink-0 text-amber-800" /><div><h2 className="text-lg font-semibold text-amber-950">{text.unavailable}</h2><p className="mt-2 text-sm leading-6 text-amber-900">{text.unavailableDetail}</p></div></div></section>
+      <div className="grid gap-4 sm:grid-cols-2">{text.cards.map(([title, detail], index) => <section key={title} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><BarChart3 className={`size-6 ${index === 0 ? "text-teal-700" : "text-violet-700"}`} /><h2 className="mt-3 font-semibold">{title}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{detail}</p></section>)}</div>
+      <ExperimentArena />
+    </div>
+  );
+}

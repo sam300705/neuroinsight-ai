@@ -7,6 +7,7 @@ import hashlib
 import io
 import json
 import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
@@ -15,9 +16,21 @@ from urllib.request import urlopen
 import numpy as np
 import onnxruntime as ort
 from PIL import Image
+from .constants import MAX_GRAD_CAM_EDGE_PIXELS
+from .model_contract import IMAGE_SIZE, MODEL_LABELS, PUBLIC_LABELS, NORMALIZATION_MEAN, NORMALIZATION_STD, validate_calibration, validate_metadata
 
-MODEL_LABELS = ["glioma", "meningioma", "notumor", "pituitary"]
-PUBLIC_LABELS = {"notumor": "no_tumor", "glioma": "glioma", "meningioma": "meningioma", "pituitary": "pituitary"}
+
+MAX_ONNX_ARTIFACT_BYTES = 128 * 1024 * 1024
+MAX_JSON_ARTIFACT_BYTES = 1 * 1024 * 1024
+SHA256_PATTERN = set("0123456789abcdef")
+
+
+class ClassifierInitializationError(RuntimeError):
+    """A public-safe classification of an internal classifier startup failure."""
+
+    def __init__(self, category: str):
+        super().__init__(category)
+        self.category = category
 
 
 @dataclass(frozen=True)
@@ -30,45 +43,169 @@ class ExperimentalPrediction:
     grad_cam_png_base64: str
 
 
-def _download_verified_https(url: str, destination: Path, expected_sha256: str) -> Path:
+def _configured_artifact_hosts() -> set[str]:
+    return {host.strip().lower() for host in os.getenv("MODEL_ARTIFACT_ALLOWED_HOSTS", "").split(",") if host.strip()}
+
+
+def _validate_artifact_url(url: str) -> None:
     parsed = urlparse(url)
-    if parsed.scheme != "https" or not parsed.netloc:
-        raise ValueError("Model artifact URLs must use HTTPS.")
-    if destination.is_file() and hashlib.sha256(destination.read_bytes()).hexdigest() == expected_sha256:
+    hostname = parsed.hostname.lower() if parsed.hostname else ""
+    if parsed.scheme != "https" or not hostname or parsed.username or parsed.password:
+        raise ClassifierInitializationError("download_failed")
+    allowed_hosts = _configured_artifact_hosts()
+    if allowed_hosts and hostname not in allowed_hosts:
+        raise ClassifierInitializationError("download_failed")
+
+
+def _validate_sha256(expected_sha256: str) -> None:
+    if len(expected_sha256) != 64 or any(char not in SHA256_PATTERN for char in expected_sha256):
+        raise ClassifierInitializationError("artifact_invalid")
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _is_verified_cached_artifact(path: Path, expected_sha256: str, max_bytes: int) -> bool:
+    try:
+        return path.is_file() and path.stat().st_size <= max_bytes and _sha256_file(path) == expected_sha256
+    except OSError:
+        # A concurrent cache cleanup or failed filesystem read is a cache miss;
+        # the verified download path remains authoritative.
+        return False
+
+
+def _content_length(response: object) -> int | None:
+    headers = getattr(response, "headers", None)
+    value = headers.get("Content-Length") if headers and hasattr(headers, "get") else None
+    if value is None:
+        return None
+    try:
+        length = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ClassifierInitializationError("download_failed") from exc
+    if length < 0:
+        raise ClassifierInitializationError("download_failed")
+    return length
+
+
+def _download_verified_https(url: str, destination: Path, expected_sha256: str, *, max_bytes: int = MAX_JSON_ARTIFACT_BYTES) -> Path:
+    _validate_artifact_url(url)
+    _validate_sha256(expected_sha256)
+    if max_bytes <= 0:
+        raise ClassifierInitializationError("artifact_invalid")
+    if _is_verified_cached_artifact(destination, expected_sha256, max_bytes):
         return destination
     destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = destination.with_suffix(destination.suffix + ".partial")
+    temporary: Path | None = None
     digest = hashlib.sha256()
-    with urlopen(url, timeout=90) as response, temporary.open("wb") as stream:
-        while chunk := response.read(1024 * 1024):
-            digest.update(chunk)
-            stream.write(chunk)
+    downloaded = 0
+    try:
+        with urlopen(url, timeout=90) as response:
+            _validate_artifact_url(getattr(response, "url", url))
+            declared_length = _content_length(response)
+            if declared_length is not None and declared_length > max_bytes:
+                raise ClassifierInitializationError("download_too_large")
+            with tempfile.NamedTemporaryFile(
+                mode="wb",
+                dir=destination.parent,
+                prefix=f".{destination.name}.",
+                suffix=".partial",
+                delete=False,
+            ) as stream:
+                temporary = Path(stream.name)
+                while chunk := response.read(1024 * 1024):
+                    downloaded += len(chunk)
+                    if downloaded > max_bytes:
+                        raise ClassifierInitializationError("download_too_large")
+                    digest.update(chunk)
+                    stream.write(chunk)
+                if declared_length is not None and downloaded != declared_length:
+                    raise ClassifierInitializationError("download_failed")
+                stream.flush()
+                os.fsync(stream.fileno())
+    except ClassifierInitializationError:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+        raise
+    except Exception as exc:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+        raise ClassifierInitializationError("download_failed") from exc
     if digest.hexdigest() != expected_sha256:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+        raise ClassifierInitializationError("checksum_mismatch")
+    if temporary is None:
+        raise ClassifierInitializationError("download_failed")
+    # Another cold-start worker may have completed the same verified artifact
+    # while this request was downloading. Keep its valid file and discard ours.
+    if _is_verified_cached_artifact(destination, expected_sha256, max_bytes):
         temporary.unlink(missing_ok=True)
-        raise ValueError("Downloaded model artifact checksum does not match the audited configured value.")
+        return destination
     temporary.replace(destination)
     return destination
 
 
 class OnnxExperimentalClassifier:
     def __init__(self, model_path: Path, metadata_path: Path, calibration_path: Path):
-        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-        if metadata.get("architecture") != "resnet50" or metadata.get("labels") != MODEL_LABELS:
-            raise ValueError("Configured ONNX metadata does not match the audited ResNet50 four-class contract.")
-        self.image_size = int(metadata["image_size"])
-        self.fc_weights = np.asarray(metadata["final_fc_weights"], dtype=np.float32)
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            self.image_size = validate_metadata(metadata)
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ClassifierInitializationError("contract_mismatch") from exc
+        try:
+            self.fc_weights = np.asarray(metadata["final_fc_weights"], dtype=np.float32)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ClassifierInitializationError("metadata_invalid") from exc
         if self.fc_weights.shape != (4, 2048):
-            raise ValueError("Configured ONNX metadata has an incompatible classifier weight shape.")
-        calibration = json.loads(calibration_path.read_text(encoding="utf-8"))
-        self.temperature = float(calibration["temperature"])
-        self.abstention_threshold = float(calibration["abstention_policy"]["threshold"])
-        self.session = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])
+            raise ClassifierInitializationError("contract_mismatch")
+        try:
+            calibration = json.loads(calibration_path.read_text(encoding="utf-8"))
+            self.temperature, self.abstention_threshold = validate_calibration(calibration)
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ClassifierInitializationError("metadata_invalid") from exc
+        try:
+            self.session = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])
+            self._validate_runtime_contract()
+        except Exception as exc:
+            if isinstance(exc, ClassifierInitializationError):
+                raise
+            raise ClassifierInitializationError("onnx_initialization_failed") from exc
+
+    def _validate_runtime_contract(self) -> None:
+        inputs = {item.name: item.shape for item in self.session.get_inputs()}
+        outputs = {item.name: item.shape for item in self.session.get_outputs()}
+        input_shape = list(inputs.get("image", []))
+        logits_shape = list(outputs.get("logits", []))
+        feature_maps_shape = list(outputs.get("feature_maps", []))
+        if not (
+            self._matches_batched_shape(input_shape, [3, IMAGE_SIZE, IMAGE_SIZE])
+            and self._matches_batched_shape(logits_shape, [4])
+            and self._matches_batched_shape(feature_maps_shape, [2048, 5, 5])
+        ):
+            raise ClassifierInitializationError("contract_mismatch")
+
+    @staticmethod
+    def _matches_batched_shape(shape: list[object], dimensions: list[int]) -> bool:
+        """Allow only batch=1 or a named/dynamic batch; all model dimensions stay fixed."""
+        return (
+            len(shape) == len(dimensions) + 1
+            and (shape[0] is None or shape[0] == 1 or (isinstance(shape[0], str) and bool(shape[0].strip())))
+            and shape[1:] == dimensions
+        )
 
     def predict(self, payload: bytes) -> ExperimentalPrediction:
         image = Image.open(io.BytesIO(payload)).convert("RGB")
+        overlay_base = image.copy()
+        overlay_base.thumbnail((MAX_GRAD_CAM_EDGE_PIXELS, MAX_GRAD_CAM_EDGE_PIXELS), Image.Resampling.LANCZOS)
         input_image = image.resize((self.image_size, self.image_size), Image.Resampling.BILINEAR)
         tensor = np.asarray(input_image, dtype=np.float32) / 255.0
-        tensor = (tensor - np.asarray([0.485, 0.456, 0.406], dtype=np.float32)) / np.asarray([0.229, 0.224, 0.225], dtype=np.float32)
+        tensor = (tensor - np.asarray(NORMALIZATION_MEAN, dtype=np.float32)) / np.asarray(NORMALIZATION_STD, dtype=np.float32)
         tensor = np.transpose(tensor, (2, 0, 1))[None, ...]
         logits, feature_maps = self.session.run(["logits", "feature_maps"], {"image": tensor})
         scaled_logits = logits[0] / self.temperature
@@ -77,9 +214,9 @@ class OnnxExperimentalClassifier:
         index = int(probabilities.argmax())
         confidence = float(probabilities[index])
         heatmap = np.maximum((self.fc_weights[index, :, None, None] * feature_maps[0]).sum(axis=0), 0.0)
-        heatmap = np.asarray(Image.fromarray(heatmap.astype(np.float32)).resize(image.size, Image.Resampling.BILINEAR), dtype=np.float32)
+        heatmap = np.asarray(Image.fromarray(heatmap.astype(np.float32)).resize(overlay_base.size, Image.Resampling.BILINEAR), dtype=np.float32)
         heatmap = (heatmap - heatmap.min()) / max(float(heatmap.max() - heatmap.min()), 1e-8)
-        base = np.asarray(image, dtype=np.float32) / 255.0
+        base = np.asarray(overlay_base, dtype=np.float32) / 255.0
         colour = np.zeros_like(base)
         colour[..., 0] = heatmap
         colour[..., 1] = 0.15 + 0.55 * (1 - np.abs(heatmap - 0.5) * 2)
@@ -103,9 +240,9 @@ def configured_onnx_classifier() -> OnnxExperimentalClassifier | None:
         return None
     keys = ["CLASSIFICATION_ONNX_URL", "CLASSIFICATION_ONNX_SHA256", "CLASSIFICATION_ONNX_METADATA_URL", "CLASSIFICATION_ONNX_METADATA_SHA256", "CLASSIFICATION_CALIBRATION_URL", "CLASSIFICATION_CALIBRATION_SHA256"]
     if not all(os.getenv(key) for key in keys):
-        return None
+        raise ClassifierInitializationError("artifact_missing")
     cache_dir = Path(os.getenv("MODEL_CACHE_DIR", "/tmp/neuroinsight-model"))
-    model_path = _download_verified_https(os.environ["CLASSIFICATION_ONNX_URL"], cache_dir / "experimental-classifier.onnx", os.environ["CLASSIFICATION_ONNX_SHA256"])
-    metadata_path = _download_verified_https(os.environ["CLASSIFICATION_ONNX_METADATA_URL"], cache_dir / "experimental-classifier-metadata.json", os.environ["CLASSIFICATION_ONNX_METADATA_SHA256"])
-    calibration_path = _download_verified_https(os.environ["CLASSIFICATION_CALIBRATION_URL"], cache_dir / "experimental-calibration.json", os.environ["CLASSIFICATION_CALIBRATION_SHA256"])
+    model_path = _download_verified_https(os.environ["CLASSIFICATION_ONNX_URL"], cache_dir / "experimental-classifier.onnx", os.environ["CLASSIFICATION_ONNX_SHA256"], max_bytes=MAX_ONNX_ARTIFACT_BYTES)
+    metadata_path = _download_verified_https(os.environ["CLASSIFICATION_ONNX_METADATA_URL"], cache_dir / "experimental-classifier-metadata.json", os.environ["CLASSIFICATION_ONNX_METADATA_SHA256"], max_bytes=MAX_JSON_ARTIFACT_BYTES)
+    calibration_path = _download_verified_https(os.environ["CLASSIFICATION_CALIBRATION_URL"], cache_dir / "experimental-calibration.json", os.environ["CLASSIFICATION_CALIBRATION_SHA256"], max_bytes=MAX_JSON_ARTIFACT_BYTES)
     return OnnxExperimentalClassifier(model_path, metadata_path, calibration_path)

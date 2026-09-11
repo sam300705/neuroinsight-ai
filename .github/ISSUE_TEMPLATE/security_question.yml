@@ -1,0 +1,15 @@
+name: Security hardening question
+description: Ask a non-sensitive question about the documented security model.
+title: "security: "
+labels: [security-question]
+body:
+  - type: markdown
+    attributes:
+      value: "Do not report a vulnerability here. Do not include credentials, signed URLs, raw medical images, personal data, or exploit details. Follow SECURITY.md for private vulnerability reporting."
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: Ask about a non-sensitive control, policy, or documentation gap.
+    validations:
+      required: true

@@ -1,72 +1,68 @@
 # NeuroInsight AI — Public Academic Demonstration Handover
 
 **Public dashboard:** <https://neuroaiapp-gtbxy6cw.manus.space>  
-**Inference service:** <https://neuroinsight-ai-inference-ovf50ho2k-sam300705s-projects.vercel.app>  
-**Status:** Published academic demonstration; **not** a medical device, diagnostic service, or clinical decision-support deployment.
+**Status:** academic/research demonstration only; **not** a medical device, diagnostic service, or clinical decision-support deployment.
 
-> **Required notice:** “This system is not a medical diagnosis and must not replace a qualified radiologist.”
+> **This system is not a medical diagnosis and must not replace a qualified radiologist.**
 
-## What is live
+## Release distinction
 
-Mode A is a real experimental 2D, four-class brain-MRI image classifier. It returns a predicted research class, a validation-calibrated **model confidence score**, a low-confidence/manual-review state, and a real final-layer Grad-CAM attribution. It can also produce a derived academic PDF report. The published dashboard was verified by submitting one lawful public fixed-split image through the browser; the test asserts safe rendering and deliberately does **not** assert that the model’s class is correct.
+The existing managed public dashboard is an earlier owner-approved release. PR #1 (`feature/overnight-safe-improvements`) contains a much larger hardening/recovery pass and its Vercel Git deployments are non-production inference previews. CI success and preview readiness do not publish the managed dashboard, merge PR #1, or promote Vercel production.
 
-| Component | Verified status | Scope boundary |
+## Current declared capability
+
+Mode A is a real experimental 2D, four-class brain-MRI image classifier.
+
+| Component | Status | Scope boundary |
 |---|---|---|
-| Public dashboard | Live | Research and education only |
-| HTTPS Mode A API | Live | Experimental image-level classification only |
-| Real inference and Grad-CAM | Verified | Grad-CAM is coarse attribution, not a tumor boundary |
-| PDF report | Verified | Derived research report, not a clinical report |
-| CORS | Verified | Allows only the published origin and localhost development origins |
-| Mode B segmentation | Intentionally unavailable | No validated full-volume model is deployed |
-| Private history re-download | Implemented, not live-session tested | Requires a signed-in account and must never store original uploads |
+| Mode A EXP-005 classification | Available in verified inference preview | Experimental fixed-split image-level research classification only |
+| Confidence/calibration/abstention | Available | Model score is not a medical probability |
+| Grad-CAM | Available with Mode A | Attribution only; not segmentation |
+| PDF report | Fail-closed unless signing configured | Requires server-issued signed analysis receipt and owner secret |
+| Private derived history | Implemented | Ownership-scoped pseudonymous result metadata and derived artifacts; source MRI not persisted by history layer |
+| Artifact recovery | Implemented in PR #1 | Durable intents, transactional pointer/deletion bookkeeping, automatic/admin reconciliation and retry |
+| Research assistant | Offline FAQ by default | External providers configuration-gated |
+| Mode B segmentation | Intentionally unavailable | No promoted full-volume case-disjoint model |
 
-## Evidence and evaluation limits
+## Evidence limits
 
-EXP-005 used the audited BDNeuro-MRI v7 fixed image-level split. Its fixed-split held-out result was **0.8099 accuracy**, **0.8080 macro-F1**, and **0.8110 weighted-F1** after conservative cross-split similarity exclusions. Temperature scaling used only validation data and selected a `0.55` abstention threshold. These are experimental image-level findings; they are **not** patient-independent, clinical, external-validation, diagnostic, or medical-probability evidence.
+EXP-005 fixed-split image-level results remain accuracy `0.8099`, macro-F1 `0.8080`, weighted-F1 `0.8110`. They are not patient-independent, external, clinical, diagnostic, or medical-probability evidence.
 
-The authoritative data and model evidence are maintained in:
+## Current PR verification
 
-| Record | Purpose |
-|---|---|
-| `DATASET_AUDIT.md` | Source, licence, split, duplicate-review, and provenance evidence |
-| `EXPERIMENTS.md` | Training and held-out evaluation ledger |
-| `docs/CALIBRATION_STATUS.md` | Validation-only calibration and abstention policy |
-| `ml/classification/MODEL_CARD.md` | Model scope and limitations |
-| `docs/TEST_REPORT.md` | Automated, browser, API, ML, and build verification |
-| `docs/VERIFICATION_LOG.md` | External service and visual/browser verification narrative |
+Application-code baseline `e60272a44cb771624d4c1eff04336cb35843840f` passed GitHub Actions run `34526092850` (#196):
+
+- 260 TypeScript/Vitest tests
+- 143 FastAPI/support tests
+- 8 ML/data tests
+- 94.69% selected TypeScript statement/line coverage, 80.52% branches, 100% functions
+- all configured Python critical-module coverage gates
+- production build and bundle budget
+- corrupt-upload and WCAG 2 A/AA browser checks
+- Node/Python dependency audits with no known vulnerabilities
+- Python lock check, SBOM, and credential-free container smoke
+
+The exact same commit had a `READY` Vercel inference preview. Fresh `/health`, `/ready`, and `/api/v1/model-info` requests returned HTTP 200 with EXP-005 available and Mode B unavailable. Report signing correctly remained unavailable without `ANALYSIS_RECEIPT_SECRET`. No recent preview runtime errors or unresolved toolbar threads were observed during the final engineering pass.
+
+The following CI-only commit `c675b4d` moves external action pins to current Node-24-capable exact SHAs and pins uv `0.12.13`.
 
 ## Privacy and artifact handling
 
-The browser sends an uploaded image to the external research API only for the requested analysis. The application is designed **not** to store the original MRI upload. If a signed-in user explicitly saves a result, the application retains only anonymous result metadata and derived report or Grad-CAM artifacts. Artifact download lookup requires ownership of the associated history record and issues a fresh signed URL rather than exposing a durable storage path.
+The history system does not persist the original MRI upload. Explicitly saved derived artifacts use owner-scoped keys and ownership-gated fresh signed download URLs.
 
-No raw data, public test image, user credential, or secret is committed to Git.
+Deletion now records durable cleanup responsibility and removes owned metadata transactionally, then performs real provider deletion outside the database transaction. Provider failure leaves an incomplete cleanup intent for automatic/admin reconciliation. This is stronger than merely revoking application metadata, but provider-side physical erasure must still be demonstrated with a real synthetic managed-storage exercise before making an erasure guarantee.
 
-## Tested release state
+The artifact lifecycle requires migrations `0004` → `0005` → `0006`. `0006` restores referential guards for active scan/artifact metadata while allowing cleanup intents to outlive a parent long enough to finish cleanup.
 
-The final regression run passed all of the following:
+## Reports
 
-| Layer | Result |
-|---|---|
-| Web tests | 21 passing tests |
-| FastAPI tests | 12 passing tests |
-| ML/data tests | 4 passing tests |
-| TypeScript check | Passed |
-| Production bundle | Passed; non-blocking JavaScript chunk-size warning recorded |
-| Browser checks | Corrupt upload, real Mode A inference, Hindi real inference, focused accessibility, cross-route WCAG 2 A/AA, and published-dashboard real inference all passed |
+There are two valid production choices:
 
-The backend accepted a CORS preflight from the public dashboard origin and rejected an unrelated origin without an allow-origin header.
+1. **Reports enabled:** configure a strong server-only `ANALYSIS_RECEIPT_SECRET`; verify classify → receipt → report plus tamper/expiry/replay rejection before release.
+2. **Reports intentionally unavailable:** leave the secret absent and keep all UI/product copy explicit that report generation is unavailable.
 
-## Operational safeguards
+## Remaining release controls
 
-Do not use the site to make medical decisions. Do not upload personal, patient-identifying, or private medical images. Keep the visible research disclaimer intact. Do not enable Mode B from the old 2D smoke checkpoint; a full-volume dataset, model, validation plan, held-out evaluation, calibration/uncertainty policy, and real artifact verification are required first.
+Before a new public release, complete the applicable gates in `MANUAL_GATES.md`: branch protection, managed migration execution, real authentication/session signing, storage lifecycle verification, distributed shared state if claimed, observability/retention, and explicit owner merge/publication/promotion decisions.
 
-When redeploying the Vercel backend, update both the dashboard inference base URL and the backend `CORS_ALLOWED_ORIGINS` list to the exact backend/public-dashboard HTTPS origins, then repeat health, readiness, allowed-origin preflight, rejected-origin preflight, and public-browser inference checks.
-
-## Remaining research gates
-
-The following tasks are intentionally not presented as completed:
-
-1. Sign in through the secure dashboard flow and verify a saved Mode A result appears in History and downloads through its signed URL.
-2. Build and validate a genuinely full-volume, glioma-focused Mode B segmentation route before exposing masks, physical measurement, volume, or 3D geometry as real output.
-
-Both gates exist to preserve privacy and avoid fabricating unvalidated medical-imaging behavior.
+Mode B remains unavailable until full-volume case-disjoint training/evaluation and separate release evidence exist. Do not infer physical tumour size, volume, or 3D geometry from the current 2D classifier.

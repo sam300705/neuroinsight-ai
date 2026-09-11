@@ -46,11 +46,10 @@ export type AnalysisResult = {
 };
 
 export const ACADEMIC_DISCLAIMER =
-  "Academic and research use only. This prototype does not provide a medical diagnosis and does not replace qualified clinical review.";
+  "Academic and research use only. This system is not a medical diagnosis and must not replace a qualified radiologist.";
 
 export const GRAD_CAM_DISCLAIMER =
   "Grad-CAM shows regions that influenced the classifier. It is a coarse attribution map, not an exact tumor boundary and not proof of medically correct reasoning.";
 
 export const GLIOMA_SCOPE_DISCLAIMER =
   "Segmentation is limited to compatible glioma-focused volumetric inputs. It is not validated for meningioma, pituitary tumors, or standalone 2D images.";
-

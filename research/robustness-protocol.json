@@ -1,0 +1,47 @@
+{
+  "schema_version": "neuroinsight-robustness-protocol/v1",
+  "status": "protocol_only_not_release_evidence",
+  "scope": "academic_non_clinical_research",
+  "model": "bdneuro-v7-resnet50-head-only-exp005",
+  "purpose": "Predeclare a bounded perturbation-stability study before any robustness claim is considered.",
+  "perturbations": [
+    {
+      "id": "brightness_minus_05",
+      "family": "intensity",
+      "description": "Reduce normalized display intensity by 5% with clipping.",
+      "parameter": -0.05
+    },
+    {
+      "id": "brightness_plus_05",
+      "family": "intensity",
+      "description": "Increase normalized display intensity by 5% with clipping.",
+      "parameter": 0.05
+    },
+    {
+      "id": "contrast_minus_05",
+      "family": "contrast",
+      "description": "Reduce contrast around the normalized midpoint by 5% with clipping.",
+      "parameter": -0.05
+    },
+    {
+      "id": "contrast_plus_05",
+      "family": "contrast",
+      "description": "Increase contrast around the normalized midpoint by 5% with clipping.",
+      "parameter": 0.05
+    }
+  ],
+  "descriptive_outputs": [
+    "class_stability_fraction",
+    "status_stability_fraction",
+    "mean_absolute_confidence_drift",
+    "maximum_absolute_confidence_drift",
+    "attribution_availability_fraction"
+  ],
+  "forbidden_shortcuts": [
+    "Do not convert this protocol into a validated OOD detector.",
+    "Do not interpret brightness or contrast perturbations as scanner/institutional shift validation.",
+    "Do not create an aggregate robustness or clinical-safety score from these descriptive outputs.",
+    "Do not promote the protocol to release evidence until the exact evaluation dataset, sample-selection rule, transformations, software version, and results are recorded reproducibly."
+  ],
+  "release_state": "not_established"
+}
