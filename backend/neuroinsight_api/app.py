@@ -15,7 +15,7 @@ from urllib.parse import urlsplit
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 
 from . import analysis_receipts as receipt_module
 from .analysis_receipts import AnalysisReceiptError, issue_analysis_receipt, verify_analysis_receipt
@@ -37,7 +37,7 @@ public_request_limiter = FixedWindowRateLimiter(window_seconds=60, max_requests=
 assistant_request_limiter = FixedWindowRateLimiter(window_seconds=60, max_requests=10)
 shared_controls = SharedControls.from_env()
 limited_paths = {"/api/v1/analyze", "/api/v1/classify", "/api/v1/segment", "/api/v1/report", "/api/v1/chat"}
-observed_paths = limited_paths | {"/health", "/ready", "/api/v1/model-info", "/api/v1/unsupported"}
+observed_paths = limited_paths | {"/", "/health", "/ready", "/api/v1/model-info", "/api/v1/unsupported"}
 upload_paths = {"/api/v1/analyze", "/api/v1/classify", "/api/v1/segment"}
 DEFAULT_ALLOWED_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000"
 
@@ -371,6 +371,15 @@ async def _read_bounded_upload(request: Request, file: UploadFile) -> bytes:
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "neuroinsight-inference"}
+
+
+@app.get("/", include_in_schema=False)
+async def dashboard():
+    """Send human visitors to the dashboard while keeping API routes stable."""
+    return RedirectResponse(
+        url=os.getenv("PUBLIC_DASHBOARD_URL", "https://neuroaiapp-gtbxy6cw.manus.space"),
+        status_code=307,
+    )
 
 
 @app.get("/ready")

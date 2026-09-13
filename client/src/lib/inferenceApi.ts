@@ -5,6 +5,7 @@ const ANALYZE_TIMEOUT_MS = 45_000;
 const REPORT_TIMEOUT_MS = 30_000;
 const CHAT_TIMEOUT_MS = 20_000;
 const MAX_REPORT_BYTES = 15_000_000;
+const PRODUCTION_INFERENCE_API_BASE_URL = "https://neuroinsight-ai-inference.vercel.app";
 
 const measurementSchema = z.object({
   kind: z.enum(["unavailable", "relative_area", "physical_area", "physical_volume"]),
@@ -110,7 +111,14 @@ function safeMessage(value: unknown, fallback: string) {
 }
 
 function apiBaseUrl() {
-  return import.meta.env.VITE_INFERENCE_API_BASE_URL?.replace(/\/$/, "") ?? "";
+  const configured = import.meta.env.VITE_INFERENCE_API_BASE_URL?.trim();
+  if (configured) return configured.replace(/\/$/, "");
+
+  // The public Vercel dashboard has a separate, intentionally public inference
+  // service. Development and tests still fail closed unless they opt in with an
+  // explicit URL, while production builds remain usable if a dashboard project
+  // is recreated without copying its public build variable.
+  return import.meta.env.PROD ? PRODUCTION_INFERENCE_API_BASE_URL : "";
 }
 
 function bytesToBase64(bytes: Uint8Array) {
