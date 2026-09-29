@@ -1,4 +1,8 @@
-import { AXIOS_TIMEOUT_MS, COOKIE_NAME, ONE_YEAR_MS, decodeOAuthState } from "@shared/const";
+import {
+  COOKIE_NAME,
+  SESSION_MAX_AGE_MS,
+  decodeOAuthState,
+} from "@shared/const";
 import { ForbiddenError } from "@shared/_core/errors";
 import axios, { type AxiosInstance } from "axios";
 import { parse as parseCookieHeader } from "cookie";
@@ -6,7 +10,10 @@ import type { Request } from "express";
 import { SignJWT, jwtVerify } from "jose";
 import type { User } from "../../drizzle/schema";
 import * as db from "../db";
+import { sessionApplicationId, sessionSecretBytes } from "./authConfig";
 import { ENV } from "./env";
+import { safeErrorMetadata } from "./safeError";
+import { oauthBaseUrl, oauthCredential, oauthPost, oauthTokenSchema, oauthUserSchema } from "./oauthBoundary";
 import type {
   ExchangeTokenRequest,
   ExchangeTokenResponse,
@@ -24,22 +31,28 @@ export type SessionPayload = {
   name: string;
 };
 
+type SessionConfiguration = {
+  appId: string;
+  secret: string;
+  production: boolean;
+};
+
 const EXCHANGE_TOKEN_PATH = `/webdev.v1.WebDevAuthPublicService/ExchangeToken`;
 const GET_USER_INFO_PATH = `/webdev.v1.WebDevAuthPublicService/GetUserInfo`;
 const GET_USER_INFO_WITH_JWT_PATH = `/webdev.v1.WebDevAuthPublicService/GetUserInfoWithJwt`;
+export const SESSION_TOKEN_ISSUER = "urn:neuroinsight:dashboard";
+const SESSION_MAX_AGE_SECONDS = Math.ceil(SESSION_MAX_AGE_MS / 1000);
+const SESSION_CLOCK_TOLERANCE_SECONDS = 5;
 
 class OAuthService {
-  constructor(private client: ReturnType<typeof axios.create>) {
-    console.log("[OAuth] Initialized with baseURL:", ENV.oAuthServerUrl);
-    if (!ENV.oAuthServerUrl) {
-      console.error(
-        "[OAuth] ERROR: OAUTH_SERVER_URL is not configured! Set OAUTH_SERVER_URL environment variable."
-      );
-    }
-  }
+  constructor(private client: AxiosInstance, private appId: string) {}
 
   private decodeState(state: string): string {
-    return decodeOAuthState(state).redirectUri;
+    const decoded = decodeOAuthState(state);
+    if (!decoded.nonce) throw new Error("Invalid OAuth state.");
+    const redirectUri = oauthBaseUrl(decoded.redirectUri, ENV.isProduction);
+    if (new URL(redirectUri).pathname !== "/api/oauth/callback") throw new Error("Invalid OAuth callback.");
+    return redirectUri;
   }
 
   async getTokenByCode(
@@ -47,47 +60,42 @@ class OAuthService {
     state: string
   ): Promise<ExchangeTokenResponse> {
     const payload: ExchangeTokenRequest = {
-      clientId: ENV.appId,
+      clientId: this.appId,
       grantType: "authorization_code",
-      code,
+      code: oauthCredential.parse(code),
       redirectUri: this.decodeState(state),
     };
 
-    const { data } = await this.client.post<ExchangeTokenResponse>(
-      EXCHANGE_TOKEN_PATH,
-      payload
-    );
-
-    return data;
+    return oauthPost(this.client, ENV.oAuthServerUrl, ENV.isProduction,
+      EXCHANGE_TOKEN_PATH, payload, oauthTokenSchema);
   }
 
   async getUserInfoByToken(
     token: ExchangeTokenResponse
-  ): Promise<GetUserInfoResponse> {
-    const { data } = await this.client.post<GetUserInfoResponse>(
-      GET_USER_INFO_PATH,
-      {
-        accessToken: token.accessToken,
-      }
-    );
-
+  ) {
+    const data = await oauthPost(this.client, ENV.oAuthServerUrl, ENV.isProduction,
+      GET_USER_INFO_PATH, { accessToken: oauthCredential.parse(token.accessToken) }, oauthUserSchema);
+    if (data.projectId !== this.appId) throw new Error("OAuth application identity mismatch.");
     return data;
   }
 }
 
-const createOAuthHttpClient = (): AxiosInstance =>
-  axios.create({
-    baseURL: ENV.oAuthServerUrl,
-    timeout: AXIOS_TIMEOUT_MS,
-  });
+const createOAuthHttpClient = (): AxiosInstance => axios.create();
 
-class SDKServer {
+export class SDKServer {
   private readonly client: AxiosInstance;
   private readonly oauthService: OAuthService;
 
-  constructor(client: AxiosInstance = createOAuthHttpClient()) {
+  constructor(
+    client: AxiosInstance = createOAuthHttpClient(),
+    private readonly sessionConfiguration: SessionConfiguration = {
+      appId: ENV.appId,
+      secret: ENV.cookieSecret,
+      production: ENV.isProduction,
+    }
+  ) {
     this.client = client;
-    this.oauthService = new OAuthService(this.client);
+    this.oauthService = new OAuthService(this.client, this.sessionConfiguration.appId);
   }
 
   private deriveLoginMethod(
@@ -134,11 +142,11 @@ class SDKServer {
       accessToken,
     } as ExchangeTokenResponse);
     const loginMethod = this.deriveLoginMethod(
-      (data as any)?.platforms,
-      (data as any)?.platform ?? data.platform ?? null
+      data.platforms,
+      data.platform ?? null
     );
     return {
-      ...(data as any),
+      ...data,
       platform: loginMethod,
       loginMethod,
     } as GetUserInfoResponse;
@@ -154,8 +162,14 @@ class SDKServer {
   }
 
   private getSessionSecret() {
-    const secret = ENV.cookieSecret;
-    return new TextEncoder().encode(secret);
+    return sessionSecretBytes(
+      this.sessionConfiguration.secret,
+      this.sessionConfiguration.production
+    );
+  }
+
+  private getSessionAppId() {
+    return sessionApplicationId(this.sessionConfiguration.appId);
   }
 
   /**
@@ -170,8 +184,8 @@ class SDKServer {
     return this.signSession(
       {
         openId,
-        appId: ENV.appId,
-        name: options.name || "",
+        appId: this.getSessionAppId(),
+        name: options.name?.trim() || "User",
       },
       options
     );
@@ -181,8 +195,21 @@ class SDKServer {
     payload: SessionPayload,
     options: { expiresInMs?: number } = {}
   ): Promise<string> {
+    const expectedAppId = this.getSessionAppId();
+    if (payload.appId !== expectedAppId) {
+      throw new Error(
+        "Session application identity does not match this dashboard."
+      );
+    }
     const issuedAt = Date.now();
-    const expiresInMs = options.expiresInMs ?? ONE_YEAR_MS;
+    const expiresInMs = options.expiresInMs ?? SESSION_MAX_AGE_MS;
+    if (
+      !Number.isSafeInteger(expiresInMs) ||
+      expiresInMs <= 0 ||
+      expiresInMs > SESSION_MAX_AGE_MS
+    ) {
+      throw new Error("Session lifetime is outside the allowed range.");
+    }
     const expirationSeconds = Math.floor((issuedAt + expiresInMs) / 1000);
     const secretKey = this.getSessionSecret();
 
@@ -192,6 +219,9 @@ class SDKServer {
       name: payload.name,
     })
       .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+      .setIssuer(SESSION_TOKEN_ISSUER)
+      .setAudience(expectedAppId)
+      .setIssuedAt(Math.floor(issuedAt / 1000))
       .setExpirationTime(expirationSeconds)
       .sign(secretKey);
   }
@@ -199,22 +229,35 @@ class SDKServer {
   async verifySession(
     cookieValue: string | undefined | null
   ): Promise<{ openId: string; appId: string; name: string } | null> {
-    if (!cookieValue) {
+    if (!cookieValue || cookieValue.length > 16384) {
       console.warn("[Auth] Missing session cookie");
       return null;
     }
 
     try {
       const secretKey = this.getSessionSecret();
+      const expectedAppId = this.getSessionAppId();
       const { payload } = await jwtVerify(cookieValue, secretKey, {
+        requiredClaims: ["exp", "iat", "iss", "aud"],
         algorithms: ["HS256"],
+        typ: "JWT",
+        issuer: SESSION_TOKEN_ISSUER,
+        audience: expectedAppId,
+        maxTokenAge: SESSION_MAX_AGE_SECONDS,
+        clockTolerance: SESSION_CLOCK_TOLERANCE_SECONDS,
       });
-      const { openId, appId, name } = payload as Record<string, unknown>;
+      const { openId, appId, name, iat, exp } = payload;
+      if (
+        !Number.isSafeInteger(iat) || !Number.isSafeInteger(exp) ||
+        (exp as number) <= (iat as number) ||
+        (exp as number) - (iat as number) > SESSION_MAX_AGE_SECONDS
+      ) return null;
 
       if (
         !isNonEmptyString(openId) ||
         !isNonEmptyString(appId) ||
-        !isNonEmptyString(name)
+        !isNonEmptyString(name) ||
+        appId !== expectedAppId
       ) {
         console.warn("[Auth] Session payload missing required fields");
         return null;
@@ -226,7 +269,10 @@ class SDKServer {
         name,
       };
     } catch (error) {
-      console.warn("[Auth] Session verification failed", String(error));
+      console.warn(
+        "[Auth] Session verification failed",
+        safeErrorMetadata(error)
+      );
       return null;
     }
   }
@@ -235,21 +281,20 @@ class SDKServer {
     jwtToken: string
   ): Promise<GetUserInfoWithJwtResponse> {
     const payload: GetUserInfoWithJwtRequest = {
-      jwtToken,
-      projectId: ENV.appId,
+      jwtToken: oauthCredential.parse(jwtToken),
+      projectId: this.getSessionAppId(),
     };
 
-    const { data } = await this.client.post<GetUserInfoWithJwtResponse>(
-      GET_USER_INFO_WITH_JWT_PATH,
-      payload
-    );
+    const data = await oauthPost(this.client, ENV.oAuthServerUrl, ENV.isProduction,
+      GET_USER_INFO_WITH_JWT_PATH, payload, oauthUserSchema);
+    if (data.projectId !== this.getSessionAppId()) throw new Error("OAuth application identity mismatch.");
 
     const loginMethod = this.deriveLoginMethod(
-      (data as any)?.platforms,
-      (data as any)?.platform ?? data.platform ?? null
+      data.platforms,
+      data.platform ?? null
     );
     return {
-      ...(data as any),
+      ...data,
       platform: loginMethod,
       loginMethod,
     } as GetUserInfoWithJwtResponse;
@@ -278,6 +323,9 @@ class SDKServer {
 
     if (session.openId.startsWith(CRON_OPEN_ID_PREFIX)) {
       const userInfo = await this.getUserInfoWithJwt(sessionToken ?? "");
+      if (userInfo.openId !== session.openId || userInfo.projectId !== session.appId) {
+        throw ForbiddenError("OAuth identity does not match session");
+      }
       const taskUid = userInfo.taskUid ?? null;
       if (!taskUid) {
         throw ForbiddenError("Cron session missing task_uid");
@@ -293,6 +341,9 @@ class SDKServer {
     if (!user) {
       try {
         const userInfo = await this.getUserInfoWithJwt(sessionToken ?? "");
+        if (userInfo.openId !== session.openId || userInfo.projectId !== session.appId) {
+          throw ForbiddenError("OAuth identity does not match session");
+        }
         await db.upsertUser({
           openId: userInfo.openId,
           name: userInfo.name || null,
@@ -302,7 +353,10 @@ class SDKServer {
         });
         user = await db.getUserByOpenId(userInfo.openId);
       } catch (error) {
-        console.error("[Auth] Failed to sync user from OAuth:", error);
+        console.error(
+          "[Auth] Failed to sync user from OAuth",
+          safeErrorMetadata(error)
+        );
         throw ForbiddenError("Failed to sync user info");
       }
     }
@@ -310,11 +364,6 @@ class SDKServer {
     if (!user) {
       throw ForbiddenError("User not found");
     }
-
-    await db.upsertUser({
-      openId: user.openId,
-      lastSignedIn: signedInAt,
-    });
 
     return user;
   }

@@ -1,0 +1,12 @@
+[run]
+branch = true
+source = neuroinsight_api
+omit =
+    neuroinsight_api/__init__.py
+
+[report]
+show_missing = true
+skip_covered = false
+
+[json]
+pretty_print = true

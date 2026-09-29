@@ -1,0 +1,31 @@
+name: Bug report
+description: Report a reproducible non-sensitive defect.
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: "Do not include passwords, API keys, signed URLs, raw MRI files, personal data, or a suspected vulnerability. Use SECURITY.md for private security reporting."
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Describe the observed behaviour and expected safe behaviour.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Use synthetic or lawfully approved inputs only.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitised logs or screenshots
+      description: Remove secrets, URLs with signatures, and private data.

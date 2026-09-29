@@ -1,9 +1,58 @@
 import { SendHorizontal, ShieldCheck } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAnalysis } from "@/contexts/AnalysisContext";
+import { askResearchExplanation, type ResearchExplanationRequest } from "@/lib/inferenceApi";
 import { ACADEMIC_DISCLAIMER } from "@shared/neuroinsight";
 
-type Message = { author: "user" | "assistant"; text: string };
-function offlineAnswer(question: string, language: "en" | "hi", context: string) { const normalized = question.toLowerCase(); const hindi = language === "hi"; if (/(system prompt|hidden prompt|instructions|ignore previous|reveal.*prompt|प्रॉम्प्ट|निर्देश)/.test(normalized)) return hindi ? "मैं छिपे हुए निर्देश, आंतरिक प्रॉम्प्ट या सुरक्षा सीमाएँ प्रकट या बदल नहीं सकता।" : "I cannot reveal or alter hidden instructions, internal prompts, or safety boundaries."; if (/(medicine|medication|surgery|treatment|diagnos|cancer|इलाज|दवा|सर्जरी|निदान)/.test(normalized)) return hindi ? "मैं उपचार, दवा, सर्जरी या निदान की सलाह नहीं दे सकता। कृपया योग्य चिकित्सक से बात करें।" : "I cannot advise on treatment, medication, surgery, or diagnosis. Please discuss those questions with a qualified clinician."; if (/(confidence|कॉन्फिडेंस)/.test(normalized)) return `${hindi ? "मॉडल कॉन्फिडेंस स्कोर मॉडल की आंतरिक निश्चितता दर्शाता है; यह चिकित्सीय संभावना नहीं है।" : "A model confidence score describes the model’s internal certainty; it is not a medical probability."} ${context}`; if (/(grad|heatmap|हीटमैप)/.test(normalized)) return hindi ? "Grad-CAM केवल उन क्षेत्रों का मोटा संकेत देता है जिन्होंने वर्गीकरण को प्रभावित किया; यह ट्यूमर सीमा नहीं है।" : "Grad-CAM is a coarse indication of regions that influenced classification; it is not a tumor boundary."; if (/(size|area|volume|आकार|क्षेत्रफल|आयतन)/.test(normalized)) return hindi ? "भौतिक इकाइयाँ केवल पुष्टि किए गए स्थानिक मेटाडेटा के साथ उपलब्ध होती हैं। अन्यथा पिक्सेल/वोक्सेल और प्रतिशत रिपोर्ट किए जाते हैं।" : "Physical units are available only with confirmed spatial metadata. Otherwise the system reports pixels or voxels and percentage occupancy."; return `${hindi ? "ऑफ़लाइन FAQ केवल उपलब्ध विश्लेषण और उसकी सीमाओं को समझा सकता है। यह निदान नहीं देता।" : "The offline FAQ can explain the available analysis and its limitations. It does not provide a diagnosis."} ${context}`; }
-export function ChatPanel() { const [input, setInput] = useState(""); const [messages, setMessages] = useState<Message[]>([]); const { language } = useLanguage(); const { current } = useAnalysis(); const hindi = language === "hi"; const context = current ? `${hindi ? "वर्तमान सत्र:" : "Current session:"} ${current.mode} ${hindi ? "विश्लेषण के लिए" : "analysis for"} ${current.fileName}; ${hindi ? "स्थिति" : "status"} ${current.status}. ${hindi ? "इस स्थिति से आगे कोई परिणाम अनुमानित नहीं किया जाना चाहिए।" : "No result should be inferred beyond that status."}` : hindi ? "अभी कोई विश्लेषण संदर्भ उपलब्ध नहीं है।" : "No analysis context is currently available."; const send = () => { const question = input.trim(); if (!question) return; setMessages(currentMessages => [...currentMessages, { author: "user", text: question }, { author: "assistant", text: `${offlineAnswer(question, language, context)} ${ACADEMIC_DISCLAIMER}` }]); setInput(""); }; return <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby="chat-title"><div className="flex items-start justify-between gap-4"><div><h2 id="chat-title" className="text-base font-semibold">{hindi ? "संदर्भ सहायक" : "Contextual assistant"}</h2><p className="mt-1 text-sm text-slate-600">{hindi ? "अनुमोदित भाषा-मॉडल एकीकरण कॉन्फ़िगर होने तक ऑफ़लाइन सुरक्षा-प्रथम FAQ सक्रिय है।" : "Offline safety-first FAQ is active until an approved language-model integration is configured."}</p></div><ShieldCheck className="size-5 text-teal-700" aria-hidden="true" /></div><p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600" role="note">{context}</p><div className="mt-4 space-y-3" aria-live="polite">{messages.length === 0 ? <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">{hindi ? "मॉडल कॉन्फिडेंस, Grad-CAM, आकार, मैनुअल समीक्षा या सीमाओं के बारे में पूछें। निदान, उपचार या छिपे प्रॉम्प्ट के अनुरोध अस्वीकार किए जाते हैं।" : "Ask about model confidence, Grad-CAM, sizing, manual review, or limitations. Requests for diagnosis, treatment, or hidden prompts are refused."}</p> : messages.map((message, index) => <div key={index} className={`rounded-xl p-3 text-sm leading-6 ${message.author === "user" ? "ml-8 bg-teal-800 text-white" : "mr-4 bg-slate-100 text-slate-800"}`}>{message.text}</div>)}</div><div className="mt-4 flex gap-2"><label className="sr-only" htmlFor="chat-question">{hindi ? "संदर्भ प्रश्न पूछें" : "Ask a contextual question"}</label><input id="chat-question" value={input} onChange={event => setInput(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); send(); } }} className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-200" placeholder={hindi ? "विश्लेषण के बारे में पूछें" : "Ask about this research prototype"} maxLength={1000} /><button type="button" onClick={send} className="inline-flex size-11 items-center justify-center rounded-xl bg-teal-800 text-white transition hover:bg-teal-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 disabled:opacity-50" aria-label={hindi ? "प्रश्न भेजें" : "Send question"} disabled={!input.trim()}><SendHorizontal className="size-4" /></button></div></section>; }
+type Message = { author: "user" | "assistant"; text: string; source?: "offline_faq" | "openai" | "gemini" };
+
+export function ChatPanel() {
+  const [input, setInput] = useState("");
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [sending, setSending] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const { language } = useLanguage();
+  const { current } = useAnalysis();
+  const hindi = language === "hi";
+  const context: ResearchExplanationRequest = {
+    question: "",
+    language,
+    purpose: "question",
+    predicted_class: current?.predictedClass,
+    model_version: current?.modelVersion === "bdneuro-v7-resnet50-head-only-exp005" ? current.modelVersion : undefined,
+    model_confidence_score: current?.modelConfidenceScore,
+    calibrated: current?.calibrated,
+    manual_review_recommended: true,
+    grad_cam_available: Boolean(current?.gradCamDataUrl),
+    uncertainty_reason: current?.uncertaintyReason,
+    measurement_available: false,
+  };
+  const contextSummary = current?.predictedClass
+    ? (hindi ? "केवल व्युत्पन्न शोध संदर्भ: वर्गीकरण और मॉडल कॉन्फिडेंस। फ़ाइल नाम, स्कैन आईडी, छवि और खाते का डेटा नहीं भेजा जाता।" : "Derived research context only: classification and model confidence. No filename, scan ID, image, or account data is sent.")
+    : (hindi ? "कोई परिणाम संदर्भ उपलब्ध नहीं है। केवल सामान्य शोध-सीमा FAQ दिया जा सकता है।" : "No result context is available. Only general research-scope FAQ guidance can be given.");
+  const send = async (suggestedQuestion?: string) => {
+    const question = (suggestedQuestion ?? input).trim();
+    if (!question || sending) return;
+    setMessages(currentMessages => [...currentMessages, { author: "user", text: question }]);
+    setInput("");
+    setSending(true);
+    const result = await askResearchExplanation({ ...context, question, purpose: suggestedQuestion ? "result_summary" : "question" });
+    const answer = result.ok
+      ? result.answer
+      : `${hindi ? "रिसर्च एक्सप्लेनेशन सर्विस तक पहुँचा नहीं जा सका। कृपया बाद में पुनः प्रयास करें या योग्य रेडियोलॉजिस्ट से बात करें।" : "The research explanation service could not be reached. Please try again later or discuss the result with a qualified radiologist."} ${ACADEMIC_DISCLAIMER}`;
+    setMessages(currentMessages => [...currentMessages, { author: "assistant", text: answer, source: result.ok ? result.source : "offline_faq" }]);
+    setSending(false);
+  };
+  const explainResult = () => {
+    inputRef.current?.focus();
+    void send(hindi ? "उपलब्ध शोध परिणाम और उसकी सीमाएँ समझाइए।" : "Explain the available research result and its limitations.");
+  };
+  return <section id="research-assistant" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby="chat-title">
+    <div className="flex items-start justify-between gap-4"><div><h2 id="chat-title" className="text-base font-semibold">{hindi ? "रिसर्च एक्सप्लेनेशन असिस्टेंट" : "Research Explanation Assistant"}</h2><p className="mt-1 text-sm text-slate-600">{hindi ? "केवल शोध-संदर्भ का स्पष्टीकरण। यह निदान या उपचार सलाह नहीं देता।" : "Research-context explanation only. It does not provide diagnosis or treatment advice."}</p></div><ShieldCheck className="size-5 text-teal-700" aria-hidden="true" /></div>
+    <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600" role="note">{contextSummary}</p>
+    <button type="button" onClick={explainResult} disabled={sending} className="mt-3 rounded-lg border border-teal-700 px-3 py-2 text-sm font-medium text-teal-800 hover:bg-teal-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 disabled:opacity-50">{hindi ? "इस परिणाम की व्याख्या करें" : "Explain this result"}</button>
+    <div className="mt-4 space-y-3" aria-live="polite">{messages.length === 0 ? <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">{hindi ? "मॉडल कॉन्फिडेंस, Grad-CAM, मैनुअल समीक्षा या सीमाओं के बारे में पूछें। निदान, उपचार और छिपे प्रॉम्प्ट के अनुरोध अस्वीकार किए जाते हैं।" : "Ask about model confidence, Grad-CAM, manual review, or limitations. Requests for diagnosis, treatment, and hidden prompts are refused."}</p> : messages.map((message, index) => <div key={index} className={`rounded-xl p-3 text-sm leading-6 ${message.author === "user" ? "ml-8 bg-teal-800 text-white" : "mr-4 bg-slate-100 text-slate-800"}`}><p>{message.text}</p>{message.author === "assistant" && <p className="mt-2 text-xs text-slate-500">{message.source === "offline_faq" ? (hindi ? "स्रोत: ऑफ़लाइन FAQ" : "Source: offline FAQ") : (hindi ? "स्रोत: सर्वर-साइड संरचित शोध उत्तर" : "Source: server-side structured research response")}</p>}</div>)}</div>
+    <div className="mt-4 flex gap-2"><label className="sr-only" htmlFor="chat-question">{hindi ? "संदर्भ प्रश्न पूछें" : "Ask a research-context question"}</label><input ref={inputRef} id="chat-question" value={input} onChange={event => setInput(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-200" placeholder={hindi ? "शोध परिणाम के बारे में पूछें" : "Ask about this research result"} maxLength={600} /><button type="button" onClick={() => void send()} className="inline-flex size-11 items-center justify-center rounded-xl bg-teal-800 text-white transition hover:bg-teal-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 disabled:opacity-50" aria-label={hindi ? "प्रश्न भेजें" : "Send question"} disabled={!input.trim() || sending}><SendHorizontal className="size-4" /></button></div>
+  </section>;
+}

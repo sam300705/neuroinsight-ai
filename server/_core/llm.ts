@@ -1,3 +1,4 @@
+import { providerBaseUrl, providerFetch } from "./providerTransport";
 import { ENV } from "./env";
 
 export type Role = "system" | "user" | "assistant" | "tool" | "function";
@@ -19,7 +20,12 @@ export type FileContent = {
   type: "file_url";
   file_url: {
     url: string;
-    mime_type?: "audio/mpeg" | "audio/wav" | "application/pdf" | "audio/mp4" | "video/mp4" ;
+    mime_type?:
+      | "audio/mpeg"
+      | "audio/wav"
+      | "application/pdf"
+      | "audio/mp4"
+      | "video/mp4";
   };
 };
 
@@ -213,8 +219,8 @@ const normalizeToolChoice = (
 };
 
 const resolveApiUrl = () =>
-  ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0
-    ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions`
+  ENV.forgeApiUrl
+    ? `${providerBaseUrl(ENV.forgeApiUrl)}/v1/chat/completions`
     : "https://forge.manus.im/v1/chat/completions";
 
 const assertApiKey = () => {
@@ -271,11 +277,47 @@ const normalizeResponseFormat = ({
 const RETRY_MAX_RETRIES = 4;
 const RETRY_BASE_DELAY_MS = 500;
 const RETRY_MAX_DELAY_MS = 30_000;
+const LLM_REQUEST_TIMEOUT_MS = 30_000;
+const LLM_MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
+const LLM_MAX_CHOICES = 32;
+const LLM_MAX_MODELS = 100;
+const LLM_MAX_STRING_LENGTH = 256 * 1024;
+const LLM_MAX_REQUEST_BYTES = 1024 * 1024;
+const LLM_MAX_CONTENT_PARTS = 64;
+const LLM_MAX_TOOL_CALLS = 32;
+const LLM_ROLES = new Set<Role>([
+  "system",
+  "user",
+  "assistant",
+  "tool",
+  "function",
+]);
+const LLM_FILE_MIME_TYPES = new Set([
+  "audio/mpeg",
+  "audio/wav",
+  "application/pdf",
+  "audio/mp4",
+  "video/mp4",
+]);
 
 type FetchInit = NonNullable<Parameters<typeof fetch>[1]>;
 
-const sleep = (ms: number) =>
-  new Promise<void>(resolve => setTimeout(resolve, ms));
+const sleep = (ms: number, signal: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new DOMException("The operation was aborted", "AbortError"));
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new DOMException("The operation was aborted", "AbortError"));
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 
 const parseRetryAfter = (value: string | null): number | undefined => {
   if (!value) return undefined;
@@ -297,46 +339,246 @@ const computeBackoffDelay = (
   return Math.min(Math.max(jittered, retryAfterMs ?? 0), RETRY_MAX_DELAY_MS);
 };
 
-// Retries non-2xx responses and network errors with exponential backoff, then
-// returns the final Response so callers keep their existing error handling.
+const isRetryableStatus = (status: number) =>
+  status === 408 ||
+  status === 429 ||
+  status === 500 ||
+  status === 502 ||
+  status === 503 ||
+  status === 504;
+
 const fetchWithBackoff = async (
   url: string,
   init: FetchInit
 ): Promise<Response> => {
   let lastError: unknown;
+  const signal = init.signal;
 
   for (let attempt = 0; attempt <= RETRY_MAX_RETRIES; attempt++) {
     try {
-      const response = await fetch(url, init);
-      if (response.ok || attempt === RETRY_MAX_RETRIES) {
+      const response = await providerFetch(url, init);
+      if (
+        response.ok ||
+        attempt === RETRY_MAX_RETRIES ||
+        !isRetryableStatus(response.status)
+      ) {
         return response;
       }
 
-      const retryAfterMs = parseRetryAfter(
-        response.headers.get("retry-after")
-      );
+      const retryAfterMs = parseRetryAfter(response.headers.get("retry-after"));
       try {
         await response.body?.cancel();
       } catch {
         // Body already settled; nothing to clean up.
       }
-      console.warn(
-        `LLM request retry ${attempt + 1}/${RETRY_MAX_RETRIES} after status ${response.status}`
+      await sleep(
+        computeBackoffDelay(attempt, retryAfterMs),
+        signal as AbortSignal
       );
-      await sleep(computeBackoffDelay(attempt, retryAfterMs));
     } catch (error) {
       lastError = error;
+      if (signal?.aborted) throw error;
       if (attempt === RETRY_MAX_RETRIES) throw error;
-      console.warn(
-        `LLM request retry ${attempt + 1}/${RETRY_MAX_RETRIES} after network error`
-      );
-      await sleep(computeBackoffDelay(attempt));
+      await sleep(computeBackoffDelay(attempt), signal as AbortSignal);
     }
   }
 
   throw lastError instanceof Error
     ? lastError
     : new Error("LLM request failed after exhausting retries");
+};
+
+const readBoundedResponse = async (response: Response): Promise<string> => {
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let totalBytes = 0;
+  let text = "";
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return text + decoder.decode();
+      totalBytes += value.byteLength;
+      if (totalBytes > LLM_MAX_RESPONSE_BYTES)
+        throw new Error("response too large");
+      text += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+};
+
+const parseJsonResponse = async (response: Response): Promise<unknown> => {
+  try {
+    return JSON.parse(await readBoundedResponse(response));
+  } catch {
+    throw new Error("invalid response");
+  }
+};
+
+const isNonEmptyString = (
+  value: unknown,
+  maxLength = LLM_MAX_STRING_LENGTH
+): value is string =>
+  typeof value === "string" &&
+  value.trim().length > 0 &&
+  value.length <= maxLength;
+
+const isBoundedString = (
+  value: unknown,
+  maxLength = LLM_MAX_STRING_LENGTH
+): value is string => typeof value === "string" && value.length <= maxLength;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const assertContentPart = (value: unknown): void => {
+  if (!isRecord(value) || typeof value.type !== "string")
+    throw new Error("invalid response");
+  if (value.type === "text") {
+    if (!isBoundedString(value.text)) throw new Error("invalid response");
+    return;
+  }
+  if (value.type === "image_url") {
+    if (
+      !isRecord(value.image_url) ||
+      !isNonEmptyString(value.image_url.url, 4096)
+    ) {
+      throw new Error("invalid response");
+    }
+    if (
+      value.image_url.detail !== undefined &&
+      !["auto", "low", "high"].includes(String(value.image_url.detail))
+    ) {
+      throw new Error("invalid response");
+    }
+    return;
+  }
+  if (value.type === "file_url") {
+    if (
+      !isRecord(value.file_url) ||
+      !isNonEmptyString(value.file_url.url, 4096)
+    ) {
+      throw new Error("invalid response");
+    }
+    if (
+      value.file_url.mime_type !== undefined &&
+      !LLM_FILE_MIME_TYPES.has(String(value.file_url.mime_type))
+    ) {
+      throw new Error("invalid response");
+    }
+    return;
+  }
+  throw new Error("invalid response");
+};
+
+const assertToolCall = (value: unknown): void => {
+  if (
+    !isRecord(value) ||
+    !isNonEmptyString(value.id, 256) ||
+    value.type !== "function" ||
+    !isRecord(value.function) ||
+    !isNonEmptyString(value.function.name, 256) ||
+    !isBoundedString(value.function.arguments)
+  ) {
+    throw new Error("invalid response");
+  }
+};
+
+const discardResponse = async (response: Response): Promise<void> => {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // The body may already be closed. Provider content is intentionally ignored.
+  }
+};
+
+const assertInvokeResult = (value: unknown): InvokeResult => {
+  if (
+    !isRecord(value) ||
+    !isNonEmptyString(value.id, 256) ||
+    !Number.isInteger(value.created) ||
+    Number(value.created) < 0 ||
+    !isNonEmptyString(value.model, 256) ||
+    !Array.isArray(value.choices) ||
+    value.choices.length === 0 ||
+    value.choices.length > LLM_MAX_CHOICES
+  ) {
+    throw new Error("invalid response");
+  }
+  for (const choice of value.choices) {
+    if (
+      !isRecord(choice) ||
+      !Number.isInteger(choice.index) ||
+      Number(choice.index) < 0 ||
+      !isRecord(choice.message) ||
+      !LLM_ROLES.has(choice.message.role as Role) ||
+      (choice.finish_reason !== null &&
+        !isNonEmptyString(choice.finish_reason, 64))
+    ) {
+      throw new Error("invalid response");
+    }
+    const content = choice.message.content;
+    if (typeof content === "string") {
+      if (!isBoundedString(content)) throw new Error("invalid response");
+    } else if (
+      Array.isArray(content) &&
+      content.length <= LLM_MAX_CONTENT_PARTS
+    ) {
+      content.forEach(assertContentPart);
+    } else {
+      throw new Error("invalid response");
+    }
+    if (choice.message.tool_calls !== undefined) {
+      if (
+        !Array.isArray(choice.message.tool_calls) ||
+        choice.message.tool_calls.length > LLM_MAX_TOOL_CALLS
+      ) {
+        throw new Error("invalid response");
+      }
+      choice.message.tool_calls.forEach(assertToolCall);
+    }
+  }
+  if (value.usage !== undefined) {
+    if (!isRecord(value.usage)) throw new Error("invalid response");
+    for (const field of [
+      "prompt_tokens",
+      "completion_tokens",
+      "total_tokens",
+    ] as const) {
+      if (
+        !Number.isInteger(value.usage[field]) ||
+        Number(value.usage[field]) < 0
+      ) {
+        throw new Error("invalid response");
+      }
+    }
+  }
+  return value as unknown as InvokeResult;
+};
+
+const assertModelsResponse = (value: unknown): ModelsResponse => {
+  if (
+    !isRecord(value) ||
+    value.object !== "list" ||
+    !Array.isArray(value.data) ||
+    value.data.length > LLM_MAX_MODELS
+  ) {
+    throw new Error("invalid response");
+  }
+  for (const model of value.data) {
+    if (
+      !isRecord(model) ||
+      !isNonEmptyString(model.id, 256) ||
+      model.object !== "model" ||
+      !Number.isInteger(model.created) ||
+      Number(model.created) < 0 ||
+      !isNonEmptyString(model.owned_by, 256)
+    ) {
+      throw new Error("invalid response");
+    }
+  }
+  return value as unknown as ModelsResponse;
 };
 
 export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
@@ -401,23 +643,40 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.response_format = normalizedResponseFormat;
   }
 
-  const response = await fetchWithBackoff(resolveApiUrl(), {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${ENV.forgeApiKey}`,
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `LLM invoke failed: ${response.status} ${response.statusText} – ${errorText}`
-    );
+  let requestBody: string;
+  try {
+    requestBody = JSON.stringify(payload);
+  } catch {
+    throw new Error("LLM invoke request is invalid");
+  }
+  if (Buffer.byteLength(requestBody, "utf8") > LLM_MAX_REQUEST_BYTES) {
+    throw new Error("LLM invoke request is too large");
   }
 
-  return (await response.json()) as InvokeResult;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), LLM_REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetchWithBackoff(resolveApiUrl(), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${ENV.forgeApiKey}`,
+      },
+      body: requestBody,
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      await discardResponse(response);
+      throw new Error(`LLM invoke failed (${response.status})`);
+    }
+    return assertInvokeResult(await parseJsonResponse(response));
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("LLM invoke failed"))
+      throw error;
+    throw new Error("LLM invoke request failed");
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export type ModelInfo = {
@@ -435,20 +694,31 @@ export type ModelsResponse = {
 export async function listLLMModels(): Promise<ModelsResponse> {
   assertApiKey();
 
-  const url = ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0
-    ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/models`
-    : "https://forge.manus.im/v1/models";
+  const url =
+    ENV.forgeApiUrl
+      ? `${providerBaseUrl(ENV.forgeApiUrl)}/v1/models`
+      : "https://forge.manus.im/v1/models";
 
-  const response = await fetchWithBackoff(url, {
-    headers: { authorization: `Bearer ${ENV.forgeApiKey}` },
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `List LLM models failed: ${response.status} ${response.statusText} – ${errorText}`
-    );
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), LLM_REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetchWithBackoff(url, {
+      headers: { authorization: `Bearer ${ENV.forgeApiKey}` },
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      await discardResponse(response);
+      throw new Error(`List LLM models failed (${response.status})`);
+    }
+    return assertModelsResponse(await parseJsonResponse(response));
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message.startsWith("List LLM models failed")
+    )
+      throw error;
+    throw new Error("List LLM models request failed");
+  } finally {
+    clearTimeout(timeout);
   }
-
-  return (await response.json()) as ModelsResponse;
 }

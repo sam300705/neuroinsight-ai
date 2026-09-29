@@ -3,8 +3,28 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import type { TrpcContext } from "./context";
 
+export const GENERIC_INTERNAL_ERROR_MESSAGE = "Request could not be completed.";
+
+export function clientSafeTrpcMessage(code: string, message: string): string {
+  return code === "INTERNAL_SERVER_ERROR"
+    ? GENERIC_INTERNAL_ERROR_MESSAGE
+    : message;
+}
+
 const t = initTRPC.context<TrpcContext>().create({
   transformer: superjson,
+  errorFormatter({ shape, error }) {
+    return {
+      ...shape,
+      message: clientSafeTrpcMessage(error.code, shape.message),
+      data: {
+        ...shape.data,
+        // Never serialize a server stack into an API response. Operational
+        // diagnostics belong in bounded server-side logs.
+        stack: undefined,
+      },
+    };
+  },
 });
 
 export const router = t.router;
