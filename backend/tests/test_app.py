@@ -153,7 +153,11 @@ def test_required_distributed_controls_fail_readiness_and_post_requests_closed(m
     from neuroinsight_api.distributed_controls import SharedControls
 
     monkeypatch.setattr(app_module, "shared_controls", SharedControls(None, required=True))
-    monkeypatch.setattr(app.state, "classifier", object(), raising=False)
+    class ReadyWorker:
+        def ready(self):
+            return True
+
+    monkeypatch.setattr(app.state, "classifier", ReadyWorker(), raising=False)
 
     readiness = client.get("/ready")
     request = client.post("/api/v1/chat", json={"question": "Explain confidence", "language": "en"})
@@ -165,40 +169,23 @@ def test_required_distributed_controls_fail_readiness_and_post_requests_closed(m
     assert "Shared abuse controls are unavailable" in request.json()["detail"]
 
 
-def test_onnx_bootstrap_failure_keeps_the_api_available_and_mode_a_unavailable(monkeypatch):
-    import neuroinsight_api.onnx_classifier_runtime as onnx_runtime
-
-    def fail_bootstrap():
-        raise ValueError("untrusted detail must not be exposed")
-
-    monkeypatch.setenv("USE_ONNX_CLASSIFIER", "true")
-    monkeypatch.setattr(onnx_runtime, "configured_onnx_classifier", fail_bootstrap)
-
-    async def exercise_lifespan():
-        async with app_module.lifespan(app):
-            assert app.state.classifier is None
-
-    asyncio.run(exercise_lifespan())
+def test_unconfigured_v32_worker_keeps_api_available(monkeypatch):
+    monkeypatch.delenv("NEUROINSIGHT_V32_SOCKET", raising=False)
+    with TestClient(app) as lifecycle_client:
+        assert lifecycle_client.get("/health").status_code == 200
+        assert lifecycle_client.get("/api/v1/model-info").json()[0]["status"] == "unavailable"
 
 
-def test_categorized_onnx_failure_is_logged_internally_but_not_exposed(monkeypatch, caplog):
-    import neuroinsight_api.onnx_classifier_runtime as onnx_runtime
-
-    def fail_bootstrap():
-        raise onnx_runtime.ClassifierInitializationError("contract_mismatch")
-
-    monkeypatch.setenv("USE_ONNX_CLASSIFIER", "true")
-    monkeypatch.setattr(onnx_runtime, "configured_onnx_classifier", fail_bootstrap)
-
-    async def exercise_lifespan():
-        async with app_module.lifespan(app):
-            response = client.get("/api/v1/model-info")
-            assert response.status_code == 200
-            assert response.json()[0]["status"] == "unavailable"
-            assert "contract_mismatch" not in response.text
-
-    asyncio.run(exercise_lifespan())
-    assert "classifier_initialization_failed:category=contract_mismatch:error_type=ClassifierInitializationError" in caplog.text
+def test_missing_worker_socket_reports_unavailable_without_fallback(monkeypatch, tmp_path):
+    monkeypatch.setenv("NEUROINSIGHT_V32_SOCKET", str(tmp_path / "missing.sock"))
+    with TestClient(app) as lifecycle_client:
+        response = lifecycle_client.post(
+            "/api/v1/classify", files={"file": ("scan.png", png_bytes(), "image/png")},
+        )
+        assert response.status_code == 200
+        assert response.json()["status"] == "unavailable"
+        assert response.json()["predicted_class"] is None
+        assert lifecycle_client.get("/ready").status_code == 503
 
 
 def test_request_id_is_bounded_and_sanitized():
@@ -430,18 +417,16 @@ def test_classification_validation_and_prediction_share_one_worker_admission(mon
             events.append("admitted")
             return operation(*args, **kwargs)
 
-    class Prediction:
-        status = "complete"
-        predicted_class = "glioma"
-        confidence = 0.7
-        calibrated = True
-        uncertainty_reason = None
-        grad_cam_png_base64 = base64.b64encode(png_bytes()).decode("ascii")
-
     class RecordingClassifier:
         def predict(self, _payload):
             events.append("predicted")
-            return Prediction()
+            return {
+                "class": "glioma", "confidence": 0.95, "final_label": "glioma",
+                "image": {"width": 128, "height": 128}, "tumor_detected": True,
+                "needs_review": True, "review_reasons": ["classifier: glioma, but segmentation found no tumor region"],
+                "mask_uncertain": False, "mask_notes": [], "bbox": None,
+                "mask_png_base64": None, "overlay_png_base64": None, "gradcam_png_base64": None,
+            }
 
     original_validate = app_module.validate_upload
 
@@ -460,6 +445,9 @@ def test_classification_validation_and_prediction_share_one_worker_admission(mon
 
     assert response.status_code == 200
     assert events == ["admitted", "validated", "predicted"]
+    finding = response.json()["finding"]
+    assert finding["tumor_area_px"] is None
+    assert finding["needs_review"] is True
 
 
 def test_classify_rejects_blank_and_full_frame_grayscale_images():
@@ -647,13 +635,14 @@ def test_report_failure_log_omits_exception_message(monkeypatch, caplog):
     assert private_marker not in caplog.text
 
 
-def test_report_rejects_unavailable_mode_b_and_synthetic_segmentation_overlays():
+def test_report_rejects_synthetic_segmentation_overlays(monkeypatch):
     missing_secret = client.post("/api/v1/report", json={"analysis_receipt": "v1.aaaaaaaaaaaaaa.bbbbbbbbbbbbb"})
     assert missing_secret.status_code == 503
 
+    monkeypatch.setenv("ANALYSIS_RECEIPT_SECRET", "test-secret-for-rejecting-unsigned-overlays")
     synthetic_overlay = client.post("/api/v1/report", json={"analysis_receipt": "v1.aaaaaaaaaaaaaa.bbbbbbbbbbbbb", "segmentation_png_base64": base64.b64encode(png_bytes()).decode("ascii")})
     assert synthetic_overlay.status_code == 422
-    assert "Segmentation overlays cannot be included" in synthetic_overlay.json()["detail"]
+    assert "does not match the server-issued" in synthetic_overlay.json()["detail"]
 
 
 def test_report_rejects_client_analysis_mutation_and_replayed_receipts(monkeypatch):

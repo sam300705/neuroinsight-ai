@@ -21,8 +21,6 @@ defusedxml==0.7.1
     # via fpdf2
 fastapi==0.141.1
     # via neuroinsight-ai-api
-flatbuffers==25.12.19
-    # via onnxruntime
 fonttools==4.63.0
     # via fpdf2
 fpdf2==2.8.8
@@ -47,20 +45,13 @@ numpy==2.5.2
     # via
     #   neuroinsight-ai-api
     #   nibabel
-    #   onnxruntime
-onnxruntime==1.29.0
-    # via neuroinsight-ai-api
 packaging==25.0
-    # via
-    #   nibabel
-    #   onnxruntime
+    # via nibabel
 pillow==12.3.0
     # via
     #   fpdf2
     #   neuroinsight-ai-api
     #   reportlab
-protobuf==7.36.0
-    # via onnxruntime
 pydantic==2.13.4
     # via
     #   fastapi

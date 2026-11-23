@@ -10,7 +10,7 @@ import re
 from ipaddress import ip_address
 from base64 import b64decode
 from contextlib import asynccontextmanager
-from typing import Protocol
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -26,9 +26,10 @@ from .distributed_controls import SharedControls, SharedControlUnavailable, Shar
 from .inference_execution import InferenceBusyError, inference_concurrency_limiter
 from .research_assistant import answer_research_question
 from .report_execution import ReportBusyError, report_concurrency_limiter
-from .schemas import AnalysisMode, AnalysisResponse, ChatRequest, ChatResponse, Measurement, ModelInfo, ReportRequest
+from .schemas import AnalysisMode, AnalysisResponse, ChatRequest, ChatResponse, Measurement, ModelInfo, ReportRequest, V32Finding
 from .reporting import build_report
 from .upload_validation import UploadValidationError, validate_upload
+from .v32_worker import MODEL_VERSION, WorkerClient, WorkerUnavailable
 
 
 logger = logging.getLogger(__name__)
@@ -72,10 +73,6 @@ def _rate_limit_identity(request: Request) -> str:
         return peer
 
 
-class ClassifierProtocol(Protocol):
-    def predict(self, payload: bytes): ...
-
-
 def _configured_allowed_origins(raw_origins: str | None = None) -> list[str]:
     """Return exact, safe browser origins or fail closed on misconfiguration."""
     configured = os.getenv("CORS_ALLOWED_ORIGINS", DEFAULT_ALLOWED_ORIGINS) if raw_origins is None else raw_origins
@@ -110,24 +107,12 @@ def _configured_allowed_origins(raw_origins: str | None = None) -> list[str]:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    path = os.getenv("NEUROINSIGHT_V32_SOCKET")
+    app.state.classifier = WorkerClient(Path(path)) if path else None
     try:
-        if os.getenv("USE_ONNX_CLASSIFIER", "false").lower() == "true":
-            from .onnx_classifier_runtime import configured_onnx_classifier
-            app.state.classifier = configured_onnx_classifier()
-        else:
-            from .classifier_runtime import configured_classifier
-            app.state.classifier = configured_classifier()
-    except Exception as exc:
-        # A transient artifact, checksum, metadata, or runtime failure must not
-        # turn a public research preview into a generic server error. The API
-        # remains available but reports the classifier as unavailable.
-        logger.error(
-            "classifier_initialization_failed:category=%s:error_type=%s",
-            getattr(exc, "category", "unknown"),
-            type(exc).__name__,
-        )
+        yield
+    finally:
         app.state.classifier = None
-    yield
 
 
 app = FastAPI(
@@ -292,7 +277,7 @@ def _unavailable_result(request: Request, mode: AnalysisMode, started_at: float)
         scan_id=str(uuid.uuid4()),
         mode=mode,
         status="unavailable",
-        model_version="unconfigured",
+        model_version=MODEL_VERSION if mode is AnalysisMode.CLASSIFICATION else "unconfigured",
         processing_time_ms=int((time.perf_counter() - started_at) * 1000),
         manual_review_recommended=True,
         measurement=Measurement(
@@ -306,7 +291,7 @@ def _unavailable_result(request: Request, mode: AnalysisMode, started_at: float)
 
 
 def _validate_and_predict(
-    classifier: ClassifierProtocol,
+    classifier: WorkerClient,
     payload: bytes,
     filename: str,
     content_type: str | None,
@@ -317,35 +302,53 @@ def _validate_and_predict(
 
 async def _classification_result(
     request: Request,
-    classifier: ClassifierProtocol,
+    classifier: WorkerClient,
     payload: bytes,
     filename: str,
     content_type: str | None,
     started_at: float,
 ) -> AnalysisResponse:
-    prediction = await inference_concurrency_limiter.run(
-        _validate_and_predict,
-        classifier,
-        payload,
-        filename,
-        content_type,
-    )
+    try:
+        prediction = await inference_concurrency_limiter.run(
+            _validate_and_predict, classifier, payload, filename, content_type,
+        )
+    except WorkerUnavailable:
+        return _unavailable_result(request, AnalysisMode.CLASSIFICATION, started_at)
+    has_mask = bool(prediction["mask_png_base64"])
+    finding = V32Finding.model_validate({
+        **prediction,
+        "tumor_area_px": prediction["tumor_area_px"] if has_mask else None,
+        "tumor_pct_of_image": prediction["tumor_pct_of_image"] if has_mask else None,
+        "tumor_pct_of_brain": prediction["tumor_pct_of_brain"] if has_mask else None,
+    })
+    low_confidence = any(reason.startswith("low classifier confidence:") for reason in finding.review_reasons)
     analysis = AnalysisResponse(
         request_id=getattr(request.state, "request_id", "unknown"),
         scan_id=str(uuid.uuid4()),
         mode=AnalysisMode.CLASSIFICATION,
-        status=prediction.status,
-        model_version="bdneuro-v7-resnet50-head-only-exp005",
+        status="low_confidence" if low_confidence else "complete",
+        model_version=MODEL_VERSION,
         processing_time_ms=int((time.perf_counter() - started_at) * 1000),
-        predicted_class=prediction.predicted_class,
-        model_confidence_score=prediction.confidence,
-        calibrated=prediction.calibrated,
-        uncertainty_reason=prediction.uncertainty_reason,
+        predicted_class=finding.classifier_class,
+        model_confidence_score=finding.confidence,
+        calibrated=True,
+        uncertainty_reason="; ".join(finding.review_reasons) or None,
         manual_review_recommended=True,
-        measurement=Measurement(kind="unavailable", metadata_confirmed=False, limitation="Classification produces no segmentation mask or physical measurement."),
-        grad_cam_png_base64=prediction.grad_cam_png_base64,
-        warnings=["Experimental image-level academic result. The model confidence score is not a medical probability.", "Qualified radiologist review is required; this system is not a medical diagnosis."],
-        limitations=[ACADEMIC_DISCLAIMER, "The experimental classifier was evaluated only on a fixed image-level public split with no patient identifiers. It is not clinically or externally validated.", "Grad-CAM is coarse classifier attribution, not a tumor boundary."],
+        measurement=Measurement(
+            kind="relative_area" if has_mask else "unavailable",
+            pixel_count=finding.tumor_area_px,
+            occupancy_percent=finding.tumor_pct_of_image,
+            metadata_confirmed=False,
+            limitation="Predicted 2D outline in source-image pixels; no physical measurement."
+            if has_mask else "No predicted outline is available for a 2D area estimate.",
+        ),
+        finding=finding,
+        grad_cam_png_base64=prediction["gradcam_png_base64"],
+        warnings=[ACADEMIC_DISCLAIMER],
+        limitations=[
+            "Classifier confidence describes the four-way classifier decision.",
+            "The predicted outline is an experimental 2D output. Physical measurements and volumetric Mode B are unavailable.",
+        ],
     )
     return analysis.model_copy(update={"analysis_receipt": issue_analysis_receipt(analysis)})
 
@@ -376,13 +379,14 @@ async def health():
 @app.get("/ready")
 async def ready():
     classifier = getattr(app.state, "classifier", None)
-    ready_now = bool(classifier) and shared_controls.ready
-    if not classifier:
+    worker_ready = bool(classifier) and await asyncio.to_thread(classifier.ready)
+    ready_now = worker_ready and shared_controls.ready
+    if not worker_ready:
         reason = MODEL_UNAVAILABLE_MESSAGE
     elif not shared_controls.ready:
         reason = "Required shared abuse and replay controls are not configured."
     else:
-        reason = "Experimental classifier configured; academic non-clinical scope only."
+        reason = "Experimental v3.2 pipeline configured; academic non-clinical scope only."
     payload = {"ready": ready_now, "reason": reason}
     return payload if ready_now else JSONResponse(status_code=503, content=payload)
 
@@ -390,14 +394,15 @@ async def ready():
 @app.get("/api/v1/model-info", response_model=list[ModelInfo])
 async def model_info():
     classifier = getattr(app.state, "classifier", None)
+    worker_ready = bool(classifier) and await asyncio.to_thread(classifier.ready)
     return [
         ModelInfo(
-            version="bdneuro-v7-resnet50-head-only-exp005" if classifier else "unconfigured",
-            status="available" if classifier else "unavailable",
+            version=MODEL_VERSION,
+            status="available" if worker_ready else "unavailable",
             mode=AnalysisMode.CLASSIFICATION,
             supported_formats=["image/png", "image/jpeg"],
-            scope="Experimental 2D four-class brain MRI image classification; fixed image-level public-split evidence only, not clinical diagnosis",
-            calibration_status="validation-only temperature scaling; model confidence score is not a medical probability" if classifier else "not evaluated",
+            scope="Experimental 2D brain MRI classification and predicted outline; academic research only",
+            calibration_status="v3.2 EfficientNetV2-S classifier temperature 0.605; classifier confidence only",
         ),
         ModelInfo(
             version="unconfigured",
@@ -479,16 +484,15 @@ async def chat(request: ChatRequest, http_request: Request):
 
 @app.post("/api/v1/report")
 async def report(request: ReportRequest):
-    if request.segmentation_png_base64:
-        raise HTTPException(status_code=422, detail="Segmentation overlays cannot be included while Mode B is unavailable.")
     async with report_concurrency_limiter.slot():
         try:
             grad_cam = await asyncio.to_thread(b64decode, request.grad_cam_png_base64, validate=True) if request.grad_cam_png_base64 else None
+            mask = await asyncio.to_thread(b64decode, request.segmentation_png_base64, validate=True) if request.segmentation_png_base64 else None
         except Exception as exc:
             raise HTTPException(status_code=422, detail="Report image payload must be valid base64.") from exc
         try:
             current_time = int(time.time())
-            verified_receipt = verify_analysis_receipt(request.analysis_receipt, grad_cam, now=current_time)
+            verified_receipt = verify_analysis_receipt(request.analysis_receipt, grad_cam, mask=mask, now=current_time)
             try:
                 await shared_controls.consume_receipt_once(
                     receipt_id=verified_receipt.receipt_id,
@@ -511,7 +515,10 @@ async def report(request: ReportRequest):
                 raise HTTPException(status_code=503, detail="Shared report replay protection is unavailable; report generation is temporarily disabled.") from exc
             raise HTTPException(status_code=422, detail="The report receipt is invalid, expired, or does not match the server-issued Mode A analysis.") from exc
         try:
-            pdf = await asyncio.to_thread(build_report, verified_receipt.analysis, grad_cam)
+            if mask is None:
+                pdf = await asyncio.to_thread(build_report, verified_receipt.analysis, grad_cam)
+            else:
+                pdf = await asyncio.to_thread(build_report, verified_receipt.analysis, grad_cam, mask)
         except Exception as exc:
             logger.error("report_generation_failed:error_type=%s", type(exc).__name__)
             raise HTTPException(status_code=500, detail="The research report could not be generated.") from exc

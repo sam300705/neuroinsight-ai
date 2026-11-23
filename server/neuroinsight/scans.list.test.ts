@@ -138,3 +138,56 @@ describe("history output contract", () => {
     await expect(caller().list({ limit: 2 })).resolves.toEqual({ items: [], omittedCorruptRecords: 2, nextCursor: 11 });
   });
 });
+
+it("saves and restores a v3.2 combined finding without image bytes", async () => {
+  const values = vi.fn().mockResolvedValue(undefined);
+  const ownedScan = {
+    from: vi.fn().mockReturnThis(),
+    where: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockResolvedValue([]),
+  };
+  mockedGetDb.mockResolvedValueOnce({
+    select: vi.fn().mockReturnValue(ownedScan),
+    insert: vi.fn().mockReturnValue({ values }),
+  } as never);
+  const finding = {
+    schema_version: "neuroinsight-finding/v1",
+    final_label: "possible_tumor (type unclear)",
+    tumor_detected: true,
+    needs_review: true,
+    review_reasons: ["classifier: no_tumor, but segmentation found a tumor region"],
+    mask_uncertain: false,
+    mask_notes: [],
+    image: { width: 128, height: 128 },
+    bbox: { x_min: 20, x_max: 40, y_min: 10, y_max: 50 },
+    tumor_area_px: 123,
+    tumor_pct_of_image: 0.75,
+    tumor_pct_of_brain: 1.5,
+  } as const;
+  const scanId = record().scanId;
+  const submitted = {
+    ...finding,
+    review_reasons: [...finding.review_reasons],
+    mask_notes: [],
+    overlay_png_base64: "must-not-be-persisted",
+  };
+  await expect(caller().saveResult({
+    scanId,
+    mode: "classification",
+    status: "low_confidence",
+    modelVersion: "neuroinsight-ai-v3.2",
+    processingTimeMs: 100,
+    predictedClass: "no_tumor",
+    confidenceScore: 0.97,
+    manualReviewRecommended: true,
+    measurement: { kind: "relative_area", metadataConfirmed: false, limitation: "synthetic test", finding: submitted },
+    warnings: [],
+  })).resolves.toEqual({ scanId });
+  const stored = values.mock.calls[0][0];
+  expect(stored).toMatchObject({ userId: 7, modelVersion: "neuroinsight-ai-v3.2" });
+  expect(stored.measurementJson).not.toContain("must-not-be-persisted");
+  mockedGetDb.mockResolvedValueOnce(databaseFor([record(stored), record({ id: 11 })]) as never);
+  const listed = await caller().list({});
+  expect(listed.items[0]).toMatchObject({ predictedClass: "no_tumor", measurement: { finding } });
+  expect(listed.items[1].modelVersion).toBe("EXP-005");
+});

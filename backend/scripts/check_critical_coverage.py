@@ -10,7 +10,6 @@ from pathlib import Path
 THRESHOLDS = {
     "neuroinsight_api/analysis_receipts.py": 85.0,
     "neuroinsight_api/research_assistant.py": 90.0,
-    "neuroinsight_api/onnx_classifier_runtime.py": 70.0,
     "neuroinsight_api/upload_validation.py": 60.0,
     "neuroinsight_api/app.py": 80.0,
 }

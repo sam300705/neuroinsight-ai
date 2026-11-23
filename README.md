@@ -6,13 +6,11 @@ NeuroInsight AI is a **non-clinical academic demonstration** of explainable 2D b
 
 ## What is available
 
-Mode A performs experimental four-class 2D classification—glioma, meningioma, pituitary tumour, or no tumour—using EXP-005, a ResNet50 head-only model. It returns a research class, validation-calibrated model-confidence score, low-confidence/manual-review state, and Grad-CAM attribution. Grad-CAM is a classifier attribution map, **not** a tumour segmentation boundary.
+Mode A uses the NeuroInsight AI v3.2 handoff to combine an experimental four-way classifier with a predicted 2D outline when available. The Results page separates the combined finding, classifier confidence, review reasons, and classifier attention. Area estimates use source-image pixels and explicit percentage denominators. See [v3.2 provisioning](docs/V32_HANDOFF.md) for the runtime and private verification workflow.
 
-On the audited BDNeuro-MRI v7 fixed image-level test split, EXP-005 recorded accuracy `0.8099`, macro-F1 `0.8080`, and weighted-F1 `0.8110`. These are experimental **image-level** results only; they are not patient-independent, external, diagnostic, clinical, or medical-probability evidence.
+Historical EXP-005 scored accuracy `0.8099`, macro-F1 `0.8080`, and weighted-F1 `0.8110` on the audited BDNeuro-MRI v7 image-level test split. The v3.2 handoff used a different dataset. These records do not measure a change in performance between models.
 
-The current branch also supports consent-controlled private derived-artifact history. It does not persist the source MRI through the history layer. Derived reports/Grad-CAM artifacts are stored under owner-scoped keys and re-download requires an ownership-gated fresh signed URL.
-
-PDF generation additionally requires a server-issued signed analysis receipt. If `ANALYSIS_RECEIPT_SECRET` is not configured, report generation fails closed rather than manufacturing or trusting a client-provided result.
+Consent-controlled history stores source-image-free result metadata and references to owner-scoped artifacts. New v3.2 overlays and classifier attention remain transient. PDF generation requires a signed server receipt and binds the optional binary outline by digest.
 
 ### Artifact lifecycle and recovery
 
@@ -54,11 +52,11 @@ Current browser analysis state—including filename, derived Grad-CAM, and repor
 
 ## What is unavailable
 
-Mode B segmentation is intentionally unavailable. The application does not return validated tumour masks, physical measurements, volume, or 3D geometry because no defensible promoted full-volume segmentation model and locked held-out evaluation exist. Do not enable those features from an old 2D smoke experiment.
+Mode B segmentation is intentionally unavailable. The application does not return volumetric tumour masks, physical measurements, volume, or 3D geometry because no defensible promoted full-volume segmentation model and locked held-out evaluation exist. Do not enable those features from an old 2D smoke experiment.
 
 ## Architecture
 
-The dashboard uses React, TypeScript, Vite, Tailwind, Express/tRPC, Drizzle, and protected owner-scoped metadata storage. The inference service uses FastAPI and ONNX Runtime for lightweight experimental Mode A inference, Grad-CAM, and signed-receipt report generation.
+The dashboard uses React, TypeScript, Vite, Tailwind, Express/tRPC, Drizzle, and protected owner-scoped metadata storage. FastAPI owns the public inference contract, upload validation, and signed-receipt reports. The separate v3.2 worker loads TensorFlow/Keras and PyTorch and communicates over a private Unix socket.
 
 The inference service uses strict input bounds, request deadlines, privacy-bounded error/log behavior, fail-closed readiness, and optional managed shared controls. Process-local fallback is explicitly not a cross-instance guarantee.
 

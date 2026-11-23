@@ -14,7 +14,7 @@ const copy = {
   en: {
     eyebrow: "Claim-to-Evidence Ledger",
     title: "Every capability must show its evidence — including missing evidence",
-    intro: "A versioned, exportable factsheet for the current research release. It deliberately avoids a single trust score because strong evidence in one dimension must not hide a missing external, subgroup, OOD, or prospective evaluation.",
+    intro: "A versioned, exportable factsheet for the historical EXP-005 research release. It deliberately avoids a single trust score because strong evidence in one dimension must not hide a missing external, subgroup, OOD, or prospective evaluation.",
     demonstrated: "Demonstrated",
     conditional: "Conditional",
     notEstablished: "Not established",
@@ -34,7 +34,7 @@ const copy = {
   hi: {
     eyebrow: "Claim-to-Evidence Ledger",
     title: "हर capability के साथ उसका evidence दिखेगा — missing evidence भी",
-    intro: "Current research release के लिए versioned, exportable factsheet। एक single trust score जानबूझकर नहीं दिया जाता, क्योंकि एक dimension की strong evidence external, subgroup, OOD या prospective evaluation की कमी को छिपा नहीं सकती।",
+    intro: "ऐतिहासिक EXP-005 शोध रिलीज़ के लिए versioned, exportable factsheet। एक single trust score जानबूझकर नहीं दिया जाता, क्योंकि एक dimension की strong evidence external, subgroup, OOD या prospective evaluation की कमी को छिपा नहीं सकती।",
     demonstrated: "Demonstrated",
     conditional: "Conditional",
     notEstablished: "Not established",

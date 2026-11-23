@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .schemas import AnalysisMode, AnalysisResponse
+from .v32_runtime import MODEL_VERSION
 
 
 RECEIPT_VERSION = "v1"
@@ -91,11 +92,15 @@ def _configured_ttl_seconds() -> int:
 def _reportable_analysis(analysis: AnalysisResponse) -> dict[str, Any]:
     if analysis.mode is not AnalysisMode.CLASSIFICATION:
         raise AnalysisReceiptError("mode")
-    if analysis.model_version != "bdneuro-v7-resnet50-head-only-exp005":
+    legacy_model = analysis.model_version == "bdneuro-v7-resnet50-head-only-exp005"
+    v32_model = analysis.model_version == MODEL_VERSION
+    if not (legacy_model or v32_model) or v32_model != (analysis.finding is not None):
         raise AnalysisReceiptError("model")
     if analysis.status not in {"complete", "low_confidence"} or not analysis.predicted_class:
         raise AnalysisReceiptError("analysis")
-    return analysis.model_dump(mode="json", exclude={"analysis_receipt", "grad_cam_png_base64"})
+    excluded = {"analysis_receipt": True, "grad_cam_png_base64": True}
+    excluded["finding"] = {"mask_png_base64", "overlay_png_base64"} if v32_model else True
+    return analysis.model_dump(mode="json", exclude=excluded)
 
 
 def issue_analysis_receipt(analysis: AnalysisResponse, *, now: int | None = None, secret: bytes | None = None) -> str | None:
@@ -105,9 +110,11 @@ def issue_analysis_receipt(analysis: AnalysisResponse, *, now: int | None = None
         return None
     issued_at = int(time.time()) if now is None else now
     expires_at = issued_at + _configured_ttl_seconds()
-    grad_cam = analysis.grad_cam_png_base64
+    grad_cam = analysis.grad_cam_png_base64 if analysis.finding is None else None
+    mask = analysis.finding.mask_png_base64 if analysis.finding else None
     try:
         grad_cam_sha256 = hashlib.sha256(base64.b64decode(grad_cam, validate=True)).hexdigest() if grad_cam else None
+        mask_sha256 = hashlib.sha256(base64.b64decode(mask, validate=True)).hexdigest() if mask else None
     except Exception as exc:
         raise AnalysisReceiptError("analysis") from exc
     claims = {
@@ -118,12 +125,14 @@ def issue_analysis_receipt(analysis: AnalysisResponse, *, now: int | None = None
         "analysis": _reportable_analysis(analysis),
         "grad_cam_sha256": grad_cam_sha256,
     }
+    if analysis.finding is not None:
+        claims["mask_sha256"] = mask_sha256
     encoded_claims = _b64url_encode(json.dumps(claims, sort_keys=True, separators=(",", ":")).encode("utf-8"))
     signature = _b64url_encode(hmac.new(signing_secret, encoded_claims.encode("ascii"), hashlib.sha256).digest())
     return f"{RECEIPT_VERSION}.{encoded_claims}.{signature}"
 
 
-def verify_analysis_receipt(receipt: str, grad_cam: bytes | None, *, now: int | None = None, secret: bytes | None = None) -> VerifiedAnalysisReceipt:
+def verify_analysis_receipt(receipt: str, grad_cam: bytes | None, *, mask: bytes | None = None, now: int | None = None, secret: bytes | None = None) -> VerifiedAnalysisReceipt:
     """Verify immutable claims and return the receipt identity without consuming it."""
     signing_secret = secret if secret is not None else _configured_secret()
     if signing_secret is None or len(signing_secret) < MIN_RECEIPT_SECRET_BYTES:
@@ -146,7 +155,9 @@ def verify_analysis_receipt(receipt: str, grad_cam: bytes | None, *, now: int | 
         _reportable_analysis(analysis)
         expected_grad_cam_hash = claims.get("grad_cam_sha256")
         actual_grad_cam_hash = hashlib.sha256(grad_cam).hexdigest() if grad_cam is not None else None
-        if expected_grad_cam_hash != actual_grad_cam_hash:
+        expected_mask_hash = claims.get("mask_sha256")
+        actual_mask_hash = hashlib.sha256(mask).hexdigest() if mask is not None else None
+        if expected_grad_cam_hash != actual_grad_cam_hash or expected_mask_hash != actual_mask_hash:
             raise AnalysisReceiptError("invalid")
     except AnalysisReceiptError:
         raise
