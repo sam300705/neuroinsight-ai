@@ -12,7 +12,7 @@ const browser = await chromium.launch({
 
 const labels = {
   "possible_tumor (type unclear)": "Possible tumor — type unclear",
-  no_tumor: "No tumor detected",
+  no_tumor: "No tumor detected on this slice",
   glioma: "Glioma",
   meningioma: "Meningioma",
   pituitary: "Pituitary tumor",
@@ -45,6 +45,9 @@ try {
   const finding = result.finding;
   await page.waitForURL("**/results");
   await page.getByRole("heading", { level: 1, name: labels[finding.final_label] }).waitFor();
+  if (finding.final_label === "no_tumor") {
+    await page.getByText("The model can miss tumors on a slice, even when classifier confidence is high.").waitFor();
+  }
   await page.getByText("Classifier confidence", { exact: true }).waitFor();
   await page.getByRole("img", { name: "Classifier attention" }).waitFor();
 
