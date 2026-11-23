@@ -9,7 +9,7 @@ anyio==4.14.2
     #   httpx
     #   starlette
     #   watchfiles
-certifi==2026.7.22
+certifi==2026.11.20
     # via
     #   httpcore
     #   httpx
@@ -47,7 +47,7 @@ numpy==2.5.2
     #   nibabel
 packaging==25.0
     # via nibabel
-pillow==12.3.0
+pillow==13.0.0
     # via
     #   fpdf2
     #   neuroinsight-ai-api
@@ -58,7 +58,7 @@ pydantic==2.13.4
     #   neuroinsight-ai-api
 pydantic-core==2.46.4
     # via pydantic
-pypdf==6.16.2
+pypdf==6.21.4
     # via neuroinsight-ai-api
 python-dotenv==1.2.3
     # via uvicorn

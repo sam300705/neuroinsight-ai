@@ -19,7 +19,7 @@ boolean-py==5.0
     # via license-expression
 cachecontrol==0.14.4
     # via pip-audit
-certifi==2026.7.22
+certifi==2026.11.20
     # via
     #   httpcore
     #   httpx
@@ -113,7 +113,7 @@ packaging==25.0
     #   pip-audit
     #   pip-requirements-parser
     #   pytest
-pillow==12.3.0
+pillow==13.0.0
     # via
     #   fpdf2
     #   neuroinsight-ai-api
@@ -146,7 +146,7 @@ pygments==2.21.0
     #   rich
 pyparsing==3.3.2
     # via pip-requirements-parser
-pypdf==6.16.2
+pypdf==6.21.4
     # via neuroinsight-ai-api
 pytest==8.4.2
     # via neuroinsight-ai-api
