@@ -15,12 +15,17 @@ export function ChatPanel() {
   const { language } = useLanguage();
   const { current } = useAnalysis();
   const hindi = language === "hi";
+  const finding = current?.serverResponse?.finding;
   const context: ResearchExplanationRequest = {
     question: "",
     language,
     purpose: "question",
     predicted_class: current?.predictedClass,
-    model_version: current?.modelVersion === "bdneuro-v7-resnet50-head-only-exp005" ? current.modelVersion : undefined,
+    model_version: finding ? "neuroinsight-ai-v3.2"
+      : current?.modelVersion === "bdneuro-v7-resnet50-head-only-exp005" ? current.modelVersion : undefined,
+    combined_finding: finding?.final_label,
+    outline_available: finding ? Boolean(finding.mask_png_base64) : undefined,
+    outline_uncertain: finding?.mask_uncertain,
     model_confidence_score: current?.modelConfidenceScore,
     calibrated: current?.calibrated,
     manual_review_recommended: true,

@@ -50,8 +50,6 @@ fastapi==0.141.1
     # via neuroinsight-ai-api
 filelock==3.32.4
     # via cachecontrol
-flatbuffers==25.12.19
-    # via onnxruntime
 fonttools==4.63.0
     # via fpdf2
 fpdf2==2.8.8
@@ -104,9 +102,6 @@ numpy==2.5.2
     # via
     #   neuroinsight-ai-api
     #   nibabel
-    #   onnxruntime
-onnxruntime==1.29.0
-    # via neuroinsight-ai-api
 packageurl-python==0.17.6
     # via
     #   cyclonedx-bom
@@ -115,7 +110,6 @@ packaging==25.0
     # via
     #   cyclonedx-bom
     #   nibabel
-    #   onnxruntime
     #   pip-audit
     #   pip-requirements-parser
     #   pytest
@@ -138,8 +132,6 @@ platformdirs==4.11.4
     # via pip-audit
 pluggy==1.6.0
     # via pytest
-protobuf==7.36.0
-    # via onnxruntime
 py-serializable==2.1.0
     # via cyclonedx-python-lib
 pydantic==2.13.4

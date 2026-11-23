@@ -28,25 +28,26 @@ const migrationJournal = readJson("drizzle/meta/_journal.json");
 
 expect(manifest.schema_version === "neuroinsight-release-manifest/v1", "release manifest schema must stay v1 until a deliberate migration");
 expect(manifest.scope === "academic_non_clinical_research", "release scope must remain academic_non_clinical_research");
-expect(manifest.mode_a?.status === "available", "Mode A must be declared available in the release source");
-expect(manifest.mode_a?.experiment_id === "EXP-005", "EXP-005 must remain the declared Mode A release model unless separately promoted");
-expect(manifest.mode_a?.model_version === "bdneuro-v7-resnet50-head-only-exp005", "Mode A model version drifted from the audited runtime identifier");
-expect(manifest.mode_a?.held_out?.accuracy === 0.8099, "release manifest accuracy must match the accepted EXP-005 evidence");
-expect(manifest.mode_a?.held_out?.macro_f1 === 0.808, "release manifest macro-F1 must match the accepted EXP-005 evidence");
-expect(manifest.mode_a?.calibration?.temperature === 0.689875, "release manifest calibration temperature drifted");
-expect(manifest.mode_a?.calibration?.abstention_threshold === 0.55, "release manifest abstention threshold drifted");
+const archived = manifest.historical_mode_a?.["EXP-005"];
+const activeModel = readJson("backend/neuroinsight_api/v32_artifacts.json");
+expect(manifest.mode_a?.status === "requires_verified_worker", "Mode A must require the verified v3.2 worker");
+expect(manifest.mode_a?.model_version === "neuroinsight-ai-v3.2" && activeModel.model_version === manifest.mode_a.model_version, "Current Mode A model identity drifted");
+expect(manifest.mode_a?.held_out === null, "Historical held-out metrics must not be attributed to v3.2");
+expect(manifest.mode_a?.calibration?.temperature === 0.605, "v3.2 must use the deployed classifier temperature");
+expect(Object.keys(activeModel.folds).length === 5 && Object.keys(activeModel.files).filter(name => name.endsWith(".weights.h5")).length === 3, "v3.2 requires three classifier and five segmentation artifacts");
+expect(archived?.status === "historical" && archived.held_out.accuracy === 0.8099, "Preserve the historical EXP-005 evidence boundary");
 expect(manifest.mode_b?.status === "unavailable", "Mode B must fail closed until its separate evidence gate is met");
 expect(manifest.trust_policy?.aggregate_trust_score === null, "release truth must not collapse multidimensional evidence into an aggregate trust score");
 expect(manifest.database_migration_head === "0006_restore_referential_guards", "release manifest must require the corrective 0006 migration head");
 
-expect(modelRegistry.experiment_id === manifest.mode_a.experiment_id, "model registry experiment id differs from release manifest");
-expect(modelRegistry.model_version === manifest.mode_a.model_version, "model registry version differs from release manifest");
-expect(modelRegistry.architecture === manifest.mode_a.architecture, "model registry architecture differs from release manifest");
-expect(modelRegistry.contract?.image_size === manifest.mode_a.input_image_size, "model registry input size differs from release manifest");
-expect(modelRegistry.evaluation?.accuracy === manifest.mode_a.held_out.accuracy, "model registry accuracy differs from release manifest");
-expect(modelRegistry.evaluation?.macro_f1 === manifest.mode_a.held_out.macro_f1, "model registry macro-F1 differs from release manifest");
-expect(modelRegistry.calibration?.temperature === manifest.mode_a.calibration.temperature, "model registry calibration temperature differs from release manifest");
-expect(modelRegistry.calibration?.abstention_threshold === manifest.mode_a.calibration.abstention_threshold, "model registry abstention threshold differs from release manifest");
+expect(modelRegistry.experiment_id === archived.experiment_id, "model registry experiment id differs from release manifest");
+expect(modelRegistry.model_version === archived.model_version, "model registry version differs from release manifest");
+expect(modelRegistry.architecture === archived.architecture, "model registry architecture differs from release manifest");
+expect(modelRegistry.contract?.image_size === archived.input_image_size, "model registry input size differs from release manifest");
+expect(modelRegistry.evaluation?.accuracy === archived.held_out.accuracy, "model registry accuracy differs from release manifest");
+expect(modelRegistry.evaluation?.macro_f1 === archived.held_out.macro_f1, "model registry macro-F1 differs from release manifest");
+expect(modelRegistry.calibration?.temperature === archived.calibration.temperature, "model registry calibration temperature differs from release manifest");
+expect(modelRegistry.calibration?.abstention_threshold === archived.calibration.abstention_threshold, "model registry abstention threshold differs from release manifest");
 expect(modelRegistry.promotion_policy?.automatic_replacement === false, "model registry must prohibit automatic model replacement");
 expect(modelRegistry.evaluation?.external_validation === false, "EXP-005 registry must not claim external validation");
 expect(modelRegistry.evaluation?.patient_case_disjoint === false, "EXP-005 registry must not claim patient/case-disjoint evidence");
@@ -91,8 +92,8 @@ expect(evidenceGraph.includes('id: "passport-attestation"'), "evidence graph mus
 expect(evidenceGraph.includes("aggregate_trust_score: null"), "evidence graph must not emit an aggregate trust score");
 
 expect(passportV1.includes('schema_version: "neuroinsight-research-passport/v1"'), "Research Passport v1 implementation is missing");
-expect(passportV1.includes(`temperature: ${manifest.mode_a.calibration.temperature}`), "Research Passport v1 calibration temperature differs from canonical release evidence");
-expect(passportV1.includes(`abstentionThreshold: ${manifest.mode_a.calibration.abstention_threshold}`), "Research Passport v1 abstention threshold differs from canonical release evidence");
+expect(passportV1.includes(`temperature: ${archived.calibration.temperature}`), "Research Passport v1 calibration temperature differs from canonical release evidence");
+expect(passportV1.includes(`abstentionThreshold: ${archived.calibration.abstention_threshold}`), "Research Passport v1 abstention threshold differs from canonical release evidence");
 expect(passportV1.includes("eceBefore: 0.0885") && passportV1.includes("eceAfter: 0.0251"), "Research Passport v1 ECE evidence drifted");
 expect(passportV1.includes("brierBefore: 0.279") && passportV1.includes("brierAfter: 0.266"), "Research Passport v1 Brier evidence drifted");
 

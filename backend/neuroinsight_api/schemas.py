@@ -31,6 +31,27 @@ class ModelInfo(BaseModel):
     calibration_status: str
 
 
+class V32Finding(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    classifier_class: Literal["glioma", "meningioma", "pituitary", "no_tumor"] = Field(alias="class")
+    confidence: float = Field(ge=0, le=1)
+    schema_version: Literal["neuroinsight-finding/v1"] = "neuroinsight-finding/v1"
+    final_label: Literal["glioma", "meningioma", "pituitary", "no_tumor", "possible_tumor (type unclear)"]
+    tumor_detected: bool
+    needs_review: bool
+    review_reasons: list[str]
+    mask_uncertain: bool
+    mask_notes: list[str]
+    image: dict[Literal["width", "height"], int]
+    bbox: dict[Literal["x_min", "y_min", "x_max", "y_max"], int] | None
+    tumor_area_px: int | None = Field(ge=1)
+    tumor_pct_of_image: float | None = Field(ge=0, le=100)
+    tumor_pct_of_brain: float | None = Field(ge=0)
+    mask_png_base64: str | None = Field(default=None, max_length=14_000_000)
+    overlay_png_base64: str | None = Field(default=None, max_length=20_000_000)
+
+
 class AnalysisResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     request_id: str
@@ -49,6 +70,7 @@ class AnalysisResponse(BaseModel):
     grad_cam_png_base64: str | None = Field(default=None, max_length=14_000_000)
     analysis_receipt: str | None = Field(default=None, max_length=8_192)
     segmentation_mask_url: str | None = None
+    finding: V32Finding | None = None
     warnings: list[str]
     limitations: list[str]
 
@@ -59,7 +81,10 @@ class ChatRequest(BaseModel):
     language: Literal["en", "hi"] = "en"
     purpose: Literal["question", "result_summary"] = "question"
     predicted_class: Literal["glioma", "meningioma", "pituitary", "no_tumor"] | None = None
-    model_version: Literal["bdneuro-v7-resnet50-head-only-exp005"] | None = None
+    model_version: Literal["bdneuro-v7-resnet50-head-only-exp005", "neuroinsight-ai-v3.2"] | None = None
+    combined_finding: Literal["glioma", "meningioma", "pituitary", "no_tumor", "possible_tumor (type unclear)"] | None = None
+    outline_available: bool = False
+    outline_uncertain: bool = False
     model_confidence_score: float | None = Field(default=None, ge=0, le=1)
     calibrated: bool = False
     manual_review_recommended: bool = True

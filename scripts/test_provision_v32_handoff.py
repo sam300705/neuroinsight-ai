@@ -38,6 +38,14 @@ class ProvisionHandoffTests(unittest.TestCase):
         self.assertEqual((self.output / "backend/pipeline.py").read_bytes(), b"test data")
         self.assertEqual(stat.S_IMODE(self.output.stat().st_mode), 0o700)
 
+    def test_verifies_and_extracts_a_complete_zip(self):
+        archive = self.root / "handoff.zip"
+        data = self.archive()
+        archive.write_bytes(data)
+        provision([archive], self.output, expected_size=len(data), expected_sha256=hashlib.sha256(data).hexdigest())
+        self.assertEqual((self.output / "backend/pipeline.py").read_bytes(), b"test data")
+        self.assertEqual(archive.read_bytes(), data)
+
     def test_size_and_digest_mismatches_leave_no_output(self):
         data = self.archive()
         for overrides in ({"expected_size": len(data) + 1}, {"expected_sha256": "0" * 64}):

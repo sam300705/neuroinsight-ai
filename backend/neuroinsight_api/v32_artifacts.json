@@ -1,0 +1,20 @@
+{
+  "model_version": "neuroinsight-ai-v3.2",
+  "source_sha256": "0463af8624df63b10946d8de3d7cb7ce4becca6ed886a029bda462dc3ce80786",
+  "files": {
+    "classifier/classifier_manifest.json": "780758814eda119072740a2fdc16d8e75ac23eeda87fd3721bdac58b8a5154a5",
+    "classifier/weights/standard_efficientnetv2s_f0.weights.h5": "e328f0840676f26d093eb02d66920178c128ea33934d266200e959981efe1978",
+    "classifier/weights/standard_efficientnetv2s_f1.weights.h5": "b9ade3d26f2a0700a3f36aa5ea3ed9d6440e7bb7ed95dc81ba72850fa1669c83",
+    "classifier/weights/standard_efficientnetv2s_f2.weights.h5": "9169f7b7b3a7eb02c3c3bf83dc8e81dfcccd6f3e5e877a7eaeb3f0252800e9cb",
+    "segmentation/final_cfg.txt": "5ae553595a00589ba29485ce25c77ba41b60ef16a7a73ad600f9255ef6a82c15",
+    "segmentation/postproc.txt": "e71aae4aba3b65a694928ff23da40dbe7c542e23669bbe4b10657fbc8f587b22",
+    "segmentation/uncertainty.txt": "009f2dc2e59e3dcb16f0d51c8647b85ecadf69caa75cbf6b9048072329b76cda"
+  },
+  "folds": {
+    "fold0": "b95ee4657971d4af98bd09019efcb2b06d7cfcd6b4120de3b385c51f01d9f3c4",
+    "fold1": "2b2573bc226366c3505bfb0b64a682d2b93af2e2b85f7b1e61131a1ded4956f1",
+    "fold2": "4011235f923e7bdcc2dc90c356f05cafd33aa8a680e6754331ed76922ff0824b",
+    "fold3": "4b2e3f4359fecbd67c712023be38f28977e950ceca26f86102b87673c355aefd",
+    "fold4": "5d9e847c73c3a431d0a878cabf374f9fb9ba2296389e5317fbb7ae91525c916f"
+  }
+}

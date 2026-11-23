@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify and extract the private NeuroInsight AI v3.2 split handoff."""
+"""Verify and extract the private NeuroInsight AI v3.2 handoff ZIP or split ZIP."""
 
 import argparse
 import hashlib
@@ -25,8 +25,9 @@ def ordered_parts(parts: list[Path]) -> list[Path]:
 def reconstruct(parts: list[Path], archive: Path, expected_size: int, expected_sha256: str) -> None:
     digest = hashlib.sha256()
     total = 0
+    sources = parts if len(parts) == 1 and parts[0].suffix.lower() == ".zip" else ordered_parts(parts)
     with archive.open("xb") as output:
-        for part in ordered_parts(parts):
+        for part in sources:
             with part.open("rb") as source:
                 while chunk := source.read(CHUNK_SIZE):
                     total += len(chunk)
@@ -118,7 +119,7 @@ def provision(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True, help="New directory under a private parent outside the checkout")
-    parser.add_argument("parts", nargs=3, type=Path)
+    parser.add_argument("parts", nargs="+", type=Path, help="One .zip file or three files with .part1 through .part3 suffixes")
     args = parser.parse_args()
     output = args.output.absolute()
     checkout = Path(__file__).resolve().parent.parent

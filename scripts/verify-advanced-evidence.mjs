@@ -26,7 +26,8 @@ expect(robustness.includes("oodDetectionEstablished: false"), "perturbation evid
 
 expect(bundle.includes(manifest.reproducibility_bundle?.schema_version), "reproducibility bundle generator schema differs from release manifest");
 expect(bundle.includes('"backend/uv.lock"') && bundle.includes('"pnpm-lock.yaml"'), "reproducibility bundle must fingerprint both dependency locks");
-expect(bundle.includes('"models/EXP-005/model-manifest.json"'), "reproducibility bundle must fingerprint the active model manifest");
+expect(bundle.includes('"backend/neuroinsight_api/v32_artifacts.json"'), "reproducibility bundle must fingerprint the v3.2 manifest");
+expect(bundle.includes('"models/EXP-005/model-manifest.json"'), "reproducibility bundle must fingerprint the archived EXP-005 manifest");
 expect(bundle.includes('"release/release-manifest.template.json"'), "reproducibility bundle must fingerprint the release truth source");
 expect(bundle.includes('"raw MRI images"') && bundle.includes('"private keys"'), "reproducibility bundle must explicitly exclude raw images and private keys");
 expect(manifest.reproducibility_bundle?.slsa_attestation_claimed === false, "source evidence bundle must not be mislabeled as a SLSA attestation");

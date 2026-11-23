@@ -7,26 +7,22 @@
     "package_version"
   ],
   "mode_a": {
-    "status": "available",
-    "experiment_id": "EXP-005",
-    "model_version": "bdneuro-v7-resnet50-head-only-exp005",
-    "architecture": "resnet50",
-    "input_image_size": 160,
+    "status": "requires_verified_worker",
+    "experiment_id": "handoff-v3.2",
+    "model_version": "neuroinsight-ai-v3.2",
+    "architecture": "efficientnetv2s + unet/resnet34",
+    "input_image_size": 320,
     "classes": [
       "glioma",
       "meningioma",
       "no_tumor",
       "pituitary"
     ],
-    "evidence_scope": "same_dataset_image_level_held_out_only",
-    "held_out": {
-      "accuracy": 0.8099,
-      "macro_f1": 0.808,
-      "weighted_f1": 0.811
-    },
+    "evidence_scope": "separate handoff dataset; not a measured comparison with EXP-005",
+    "held_out": null,
     "calibration": {
-      "temperature": 0.689875,
-      "abstention_threshold": 0.55
+      "temperature": 0.605,
+      "review_below_confidence": 0.9
     },
     "unsupported_claims": [
       "patient_independent_performance",
@@ -35,7 +31,11 @@
       "medical_probability",
       "diagnosis",
       "physical_measurement"
-    ]
+    ],
+    "segmentation_input_image_size": 384,
+    "classifier_folds": 3,
+    "segmentation_folds": 5,
+    "artifact_manifest": "backend/neuroinsight_api/v32_artifacts.json"
   },
   "mode_b": {
     "status": "unavailable",
@@ -109,5 +109,38 @@
       "not_established"
     ]
   },
-  "release_notice": "This system is not a medical diagnosis and must not replace a qualified radiologist."
+  "release_notice": "This system is not a medical diagnosis and must not replace a qualified radiologist.",
+  "historical_mode_a": {
+    "EXP-005": {
+      "status": "historical",
+      "experiment_id": "EXP-005",
+      "model_version": "bdneuro-v7-resnet50-head-only-exp005",
+      "architecture": "resnet50",
+      "input_image_size": 160,
+      "classes": [
+        "glioma",
+        "meningioma",
+        "no_tumor",
+        "pituitary"
+      ],
+      "evidence_scope": "same_dataset_image_level_held_out_only",
+      "held_out": {
+        "accuracy": 0.8099,
+        "macro_f1": 0.808,
+        "weighted_f1": 0.811
+      },
+      "calibration": {
+        "temperature": 0.689875,
+        "abstention_threshold": 0.55
+      },
+      "unsupported_claims": [
+        "patient_independent_performance",
+        "external_validation",
+        "clinical_performance",
+        "medical_probability",
+        "diagnosis",
+        "physical_measurement"
+      ]
+    }
+  }
 }

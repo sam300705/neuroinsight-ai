@@ -9,6 +9,8 @@ const artifactPaths = [
   "release/release-manifest.template.json",
   "release/operational-slos.json",
   "models/EXP-005/model-manifest.json",
+  "backend/neuroinsight_api/v32_artifacts.json",
+  "backend/requirements-v32-worker.txt",
   "research/robustness-protocol.json",
   "EXPERIMENTS.md",
   "docs/MODEL_CARD.md",
@@ -62,6 +64,14 @@ const bundle = {
     operational_slo_status: releaseManifest.operational_slos.status,
   },
   model: {
+    model_version: releaseManifest.mode_a.model_version,
+    experiment_id: releaseManifest.mode_a.experiment_id,
+    evidence_scope: releaseManifest.mode_a.evidence_scope,
+    artifact_manifest: releaseManifest.mode_a.artifact_manifest,
+    external_validation: false,
+    patient_case_disjoint: false,
+  },
+  historical_exp005: {
     manifest_schema: modelManifest.schema_version,
     experiment_id: modelManifest.experiment_id,
     model_version: modelManifest.model_version,

@@ -36,6 +36,25 @@ def answer_offline(request: ChatRequest) -> str:
             if hindi
             else "I cannot advise on treatment, medication, surgery, or diagnosis. Please discuss these questions with a qualified clinician. "
         ) + ACADEMIC_DISCLAIMER
+    if request.model_version == "neuroinsight-ai-v3.2":
+        if any(word in question for word in ("outline", "size", "area", "volume", "mask", "रूपरेखा")):
+            return (
+                "v3.2 की अनुमानित 2D रूपरेखा उपलब्ध होने पर क्षेत्रफल पिक्सेल और सापेक्ष प्रतिशत में दिखता है। भौतिक आकार या आयतन उपलब्ध नहीं है। "
+                if hindi else
+                "When v3.2 finds an outline, it reports pixels and separate percentages of the whole image and estimated brain region. Physical size and volume are unavailable. "
+            ) + ACADEMIC_DISCLAIMER
+        if request.purpose == "result_summary" or "confidence" in question or "कॉन्फिडेंस" in question:
+            if request.combined_finding == "possible_tumor (type unclear)":
+                return (
+                    "वर्गीकारक ने ट्यूमर नहीं बताया, लेकिन सेगमेंटेशन को एक क्षेत्र मिला। वर्गीकारक का कॉन्फिडेंस उसके अपने निर्णय का है। "
+                    if hindi else
+                    "The classifier predicted no tumor, but segmentation found a region. Classifier confidence describes its own decision. "
+                ) + ACADEMIC_DISCLAIMER
+            return (
+                "वर्गीकारक का कॉन्फिडेंस उसके चार-वर्ग निर्णय का है। संयुक्त निष्कर्ष में अनुमानित 2D रूपरेखा भी शामिल है। "
+                if hindi else
+                "Classifier confidence describes the four-way classifier decision. The combined finding also uses the outline model. "
+            ) + ACADEMIC_DISCLAIMER
     if "heatmap" in question or "grad" in question:
         return GRAD_CAM_DISCLAIMER
     if "confidence" in question:

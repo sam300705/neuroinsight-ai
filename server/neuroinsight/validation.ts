@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { v32FindingSummarySchema } from "../../shared/v32Finding";
 
 /**
  * Only deployed Mode A derived artifacts may enter protected history.
@@ -16,6 +17,7 @@ export const measurementSchema = z.object({
   unit: z.enum(["pixels", "voxels", "percent", "mm²", "mL"]).optional(),
   metadataConfirmed: z.boolean(),
   limitation: z.string().max(2000),
+  finding: v32FindingSummarySchema.optional(),
 });
 
 export const warningsSchema = z.array(z.string().max(1000)).max(20);

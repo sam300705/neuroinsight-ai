@@ -16,12 +16,88 @@ python3 scripts/provision_v32_handoff.py \
 python3 -m unittest discover -s scripts -p test_provision_v32_handoff.py -v
 ```
 
-## Existing integration points
+## v3.2 runtime
 
-- The browser requires acknowledgement and validates the JPEG or PNG locally. `Analyse.tsx` then posts the image to FastAPI through `inferenceApi.ts`. FastAPI applies bounded upload validation and inference concurrency before returning the result used by `Results.tsx`.
-- FastAPI startup and the Vercel entry point currently configure EXP-005. FastAPI's `/ready` checks both classifier availability and shared controls. The two Mode A endpoints share the same inference implementation. The volumetric Mode B endpoints report unavailable.
-- Results conditionally request a PDF using a signed analysis receipt. Report verification binds the existing classifier attention image by SHA-256 and enforces receipt expiry and replay checks. Saving requires sign-in and explicit action. The Node backend scopes scan and artifact operations to the owner. The existing saved rows carry a model version and classifier fields. A combined finding will need its own persisted fields.
-- The calibration panel already matches evidence by model version. The legacy v2 Research Passport embeds EXP-005 evidence and accepts only that model when generating new passports. Existing passport verification is unchanged. The report, explanation assistant, and current Results screen still use EXP-005-era assumptions and need a v3.2 contract before cutover.
-- The handoff must be inspected before choosing package versions, enumerating hashes for the three classifier and five segmentation weights, or adapting prediction fields. Verify all eight evaluations locally against their saved CSV rows. Run the private browser check with a separately authorized non-sensitive JPEG or PNG outside the evaluation split.
+The combined Drive ZIP has the same exact length and digest as the reconstructed three-part ZIP. It can be supplied directly to the provisioner.
 
-Provisioning alone leaves the application on the existing model. No model files or sample images belong in this repository.
+```bash
+python3 scripts/provision_v32_handoff.py \
+  --output /workspace/private-neuroinsight/handoff-v32 /workspace/private-neuroinsight/handoff.zip
+```
+
+Keep the supplied source, weights, CSV, and images read-only.
+
+The runtime expects the extracted `NeuroInsight_AI_Handoff/backend/models` directory and its sibling `neuroinsight_pipeline.py`. The checked-in artifact manifest fingerprints the supplied source, the three classifier weights, classifier configuration, all three segmentation configuration files, and each of the five unpacked checkpoint trees. Set the model directory using `--models`. The worker loads the three deployed EfficientNetV2-S folds and five U-Net/ResNet34 folds once, restricts PyTorch loading to weights, checks state keys, and exposes its socket after a successful real forward pass.
+
+Run these commands from the repository root on Linux with Python 3.12, uv, Node 22, and pnpm 10.4.1. Set `NEUROINSIGHT_PRIVATE` to a private directory outside the checkout and `NEUROINSIGHT_HANDOFF` to the extracted handoff root. Use the same values in each service terminal.
+
+```bash
+export NEUROINSIGHT_PRIVATE=/workspace/private-neuroinsight
+export NEUROINSIGHT_HANDOFF="$NEUROINSIGHT_PRIVATE/handoff-v32/NeuroInsight_AI_Handoff"
+umask 077
+uv sync --directory backend --locked --extra test
+uv venv --python 3.12 "$NEUROINSIGHT_PRIVATE/runtime"
+uv pip install --python "$NEUROINSIGHT_PRIVATE/runtime/bin/python" \
+  --index https://download.pytorch.org/whl/cpu \
+  'torch==2.10.0+cpu' 'torchvision==0.25.0+cpu'
+uv pip install --python "$NEUROINSIGHT_PRIVATE/runtime/bin/python" \
+  -r backend/requirements-v32-worker.txt
+pnpm install --frozen-lockfile
+```
+
+Start the worker, API and dashboard in three separate terminals. Use a fresh socket path after an unclean worker stop, or remove the stale socket only after confirming the previous worker has stopped.
+
+```bash
+# Worker, in backend/
+cd backend
+CUDA_VISIBLE_DEVICES=-1 TF_NUM_INTRAOP_THREADS=3 TF_NUM_INTEROP_THREADS=1 OMP_NUM_THREADS=3 \
+  "$NEUROINSIGHT_PRIVATE/runtime/bin/python" -m neuroinsight_api.v32_worker \
+  --models "$NEUROINSIGHT_HANDOFF/backend/models" --socket "$NEUROINSIGHT_PRIVATE/inference.sock"
+```
+
+```bash
+# FastAPI, in backend/. The generated key is for this local session only.
+cd backend
+export ANALYSIS_RECEIPT_SECRET="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+NEUROINSIGHT_V32_SOCKET="$NEUROINSIGHT_PRIVATE/inference.sock" \
+  .venv/bin/uvicorn neuroinsight_api.app:app --host 127.0.0.1 --port 8000
+```
+
+```bash
+# Dashboard, in the repository root
+PORT=3000 VITE_INFERENCE_API_BASE_URL=http://127.0.0.1:8000 pnpm dev
+```
+
+Check `/health`, `/ready`, and `/api/v1/model-info` on the API. `/ready` also checks the deployment's required shared controls. For a private browser smoke test, upload a separately authorized grayscale PNG or JPEG outside the locked evaluation split through the normal Analyse screen. A generated grayscale test image can validate this transport and rendering path without disclosing MRI data. If testing Mode A with a mask, check the outline toggle, original-image dimensions, separate classifier attention, and signed PDF. Keep handoff evaluation images private.
+
+To automate the private browser and signed PDF check, set `E2E_INPUT_IMAGE` to a separately authorized local fixture. Use `E2E_REQUIRE_OUTLINE=true` only for a separate private fixture expected to have an outline.
+
+```bash
+E2E_BASE_URL=http://127.0.0.1:3000 INFERENCE_API_BASE_URL=http://127.0.0.1:8000 \
+  E2E_INPUT_IMAGE="$NEUROINSIGHT_PRIVATE/synthetic-browser-slice.png" \
+  PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium node scripts/verify-v32-browser.mjs
+```
+
+Run the exhaustive fixture check and application checks from the repository root:
+
+```bash
+(cd backend && PYTHONPATH=. CUDA_VISIBLE_DEVICES=-1 TF_NUM_INTRAOP_THREADS=3 \
+  TF_NUM_INTEROP_THREADS=1 OMP_NUM_THREADS=3 "$NEUROINSIGHT_PRIVATE/runtime/bin/python" \
+  scripts/check_v32_regression.py "$NEUROINSIGHT_HANDOFF")
+(cd backend && uv run --locked --extra test pytest -q tests ../ml/tests)
+pnpm check
+pnpm test:coverage
+pnpm build
+pnpm check:bundle
+pnpm release:verify
+```
+
+Fixture comparison uses exact classification/combined labels and detection, review, and uncertainty flags. The absolute tolerances are 0.01 for confidence, presence and segmentation uncertainty, 0.5 percentage points of estimated brain area, and the larger of 50 pixels or 3% for mask area. The checker also validates mask size, binary pixels, bounds, and area in source coordinates. The CSV lacks reference masks, so this does not establish pixel-for-pixel parity.
+
+The source overlay and classifier attention are transient. The signed report can embed a digest-bound binary mask with no source pixels. Saved history retains the finding summary in the existing measurement JSON and preserves historical EXP-005 records without a schema migration.
+
+## Owner deployment and rollback
+
+Use a long-running Linux API and worker on the same host or mounted private Unix-socket volume. Configure receipt signing, existing shared abuse/replay controls, and the authorized dashboard HTTPS origin on that API. Set the dashboard build's `VITE_INFERENCE_API_BASE_URL` to the new API HTTPS origin. The lightweight serverless entry point keeps validation, reporting and chat but cannot run this worker. Promote only after private environment and owner acceptance. No production settings are changed by these steps.
+
+To roll back a deployed application, restore the previous approved dashboard and API build and their previous configuration together. Stop the v3.2 worker when it has no callers. Keep the database and saved artifacts. No database migration is required for the v3.2 summary.

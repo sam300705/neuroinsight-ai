@@ -27,10 +27,24 @@ def build_report(analysis: AnalysisResponse, grad_cam_png: bytes | None = None, 
     rows = [
         ("Scan UUID", analysis.scan_id), ("Timestamp (UTC)", datetime.now(UTC).isoformat()),
         ("Analysis mode", analysis.mode.value), ("Status", analysis.status), ("Predicted class", analysis.predicted_class),
-        ("Model confidence score", analysis.model_confidence_score), ("Calibration status", "Calibrated" if analysis.calibrated else "Not calibrated / unavailable"),
+        ("Classifier confidence" if analysis.finding else "Model confidence score", analysis.model_confidence_score), ("Calibration status", "Calibrated" if analysis.calibrated else "Not calibrated / unavailable"),
         ("Uncertainty status", analysis.uncertainty_reason), ("Manual review", "Recommended" if analysis.manual_review_recommended else "Not flagged"),
         ("Model version", analysis.model_version), ("Processing time", f"{analysis.processing_time_ms} ms"),
     ]
+    if analysis.finding:
+        finding = analysis.finding
+        combined = {
+            "possible_tumor (type unclear)": "Possible tumor - type unclear",
+            "no_tumor": "No tumor detected",
+        }.get(finding.final_label, finding.final_label.capitalize())
+        rows = [
+            ("Combined finding", combined),
+            ("2D outline uncertain", "Yes" if finding.mask_uncertain else "No"),
+            ("Review reasons", "; ".join(finding.review_reasons)),
+            ("Outline area in pixels", finding.tumor_area_px),
+            ("Outline percentage of whole image", finding.tumor_pct_of_image),
+            ("Outline percentage of estimated brain region", finding.tumor_pct_of_brain),
+        ] + rows
     pdf.set_font("Helvetica", "B", 12); pdf.cell(0, 8, "Analysis summary", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     for label, value in rows:
         pdf.set_x(pdf.l_margin)
@@ -50,8 +64,8 @@ def build_report(analysis: AnalysisResponse, grad_cam_png: bytes | None = None, 
         with NamedTemporaryFile(suffix=".png") as temp:
             temp.write(grad_cam_png); temp.flush(); pdf.image(temp.name, w=160)
     if segmentation_png:
-        pdf.add_page(); pdf.set_font("Helvetica", "B", 12); pdf.cell(0, 8, "Segmentation overlay", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        pdf.set_x(pdf.l_margin); pdf.set_font("Helvetica", "", 9); pdf.multi_cell(content_width, 6, GLIOMA_SCOPE_DISCLAIMER)
+        pdf.add_page(); pdf.set_font("Helvetica", "B", 12); pdf.cell(0, 8, "Predicted 2D binary outline", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_x(pdf.l_margin); pdf.set_font("Helvetica", "", 9); pdf.multi_cell(content_width, 6, "Experimental 2D outline in source-image coordinates. No physical measurement or volume.")
         with NamedTemporaryFile(suffix=".png") as temp:
             temp.write(segmentation_png); temp.flush(); pdf.image(temp.name, w=160)
     return bytes(pdf.output())

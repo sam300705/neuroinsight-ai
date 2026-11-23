@@ -1,5 +1,6 @@
 import type { AnalysisMode } from "@shared/neuroinsight";
 import { z } from "zod";
+import { v32FindingSchema, type V32Finding } from "@shared/v32Finding";
 
 const ANALYZE_TIMEOUT_MS = 45_000;
 const REPORT_TIMEOUT_MS = 30_000;
@@ -34,6 +35,7 @@ const analysisResponseSchema = z.object({
   grad_cam_png_base64: z.string().max(14_000_000).nullable().optional(),
   analysis_receipt: z.string().max(8_192).nullable().optional(),
   segmentation_mask_url: z.string().max(2_048).nullable().optional(),
+  finding: v32FindingSchema.nullable().optional(),
   warnings: z.array(z.string().max(2_000)).max(100),
   limitations: z.array(z.string().max(2_000)).max(100),
 }).strict();
@@ -74,6 +76,7 @@ export type InferenceAnalysisResponse = {
   measurement: InferenceMeasurement;
   grad_cam_png_base64?: string | null;
   analysis_receipt?: string | null;
+  finding?: V32Finding | null;
   warnings: string[];
   limitations: string[];
 };
@@ -87,7 +90,10 @@ export type ResearchExplanationRequest = {
   language: "en" | "hi";
   purpose?: "question" | "result_summary";
   predicted_class?: InferenceAnalysisResponse["predicted_class"];
-  model_version?: "bdneuro-v7-resnet50-head-only-exp005";
+  model_version?: "bdneuro-v7-resnet50-head-only-exp005" | "neuroinsight-ai-v3.2";
+  combined_finding?: V32Finding["final_label"];
+  outline_available?: boolean;
+  outline_uncertain?: boolean;
   model_confidence_score?: number | null;
   calibrated?: boolean;
   manual_review_recommended?: boolean;
@@ -195,7 +201,13 @@ export async function generateResearchReport(
     const response = await fetchWithTimeout(fetchImpl, `${baseUrl}/api/v1/report`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ analysis_receipt: analysis.analysis_receipt, grad_cam_png_base64: analysis.grad_cam_png_base64 ?? null }),
+      body: JSON.stringify(analysis.finding ? {
+        analysis_receipt: analysis.analysis_receipt,
+        segmentation_png_base64: analysis.finding.mask_png_base64,
+      } : {
+        analysis_receipt: analysis.analysis_receipt,
+        grad_cam_png_base64: analysis.grad_cam_png_base64 ?? null,
+      }),
     }, timeoutMs);
     if (!response.ok) return { ok: false, message: "The validation service could not generate the derived research report." };
     const declaredLength = Number(response.headers.get("Content-Length"));

@@ -1,5 +1,7 @@
 # Model Card — Mode A EXP-005
 
+This card preserves historical EXP-005 evidence. For the current v3.2 inference runtime and evidence boundary, see [the v3.2 handoff guide](V32_HANDOFF.md).
+
 | Field | Recorded value |
 |---|---|
 | Purpose | Experimental four-class 2D brain-MRI image classification for academic research. |

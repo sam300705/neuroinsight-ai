@@ -110,6 +110,9 @@ export const scansRouter = router({
     const [record] = await db.select().from(scanRecords).where(and(eq(scanRecords.userId, ctx.user.id), eq(scanRecords.scanId, input.scanId))).limit(1);
     if (!record) throw new Error("Scan record was not found for this user.");
 
+    if (record.modelVersion === "neuroinsight-ai-v3.2" && input.artifactType === "grad_cam") {
+      throw new Error("Classifier attention is transient for v3.2 scans.");
+    }
     const bytes = validateArtifactPayload(input.base64, input.contentType);
     const intentId = crypto.randomUUID();
     const extension = input.artifactType === "report" ? "pdf" : "png";
