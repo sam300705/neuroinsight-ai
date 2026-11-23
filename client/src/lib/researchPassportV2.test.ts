@@ -78,4 +78,12 @@ describe("research passport v2", () => {
       analysis: { ...result, request_id: "different-request" },
     })).rejects.toThrow(/request identifiers/);
   });
+
+  it("does not attach EXP-005 evidence to a result from a different model", async () => {
+    const result = { ...analysis(), model_version: "neuroinsight-v3.2" };
+    const v1 = buildResearchPassport({ analysis: result, fileName: "research.png", fileSize: 1200 });
+
+    await expect(buildResearchPassportV2({ passportV1: v1, analysis: result }))
+      .rejects.toThrow(/evidence specific to EXP-005/);
+  });
 });

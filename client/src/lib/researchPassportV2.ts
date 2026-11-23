@@ -1,5 +1,5 @@
 import type { InferenceAnalysisResponse } from "@/lib/inferenceApi";
-import type { ResearchPassport } from "@/lib/researchPassport";
+import { EXP005_MODEL_VERSION, type ResearchPassport } from "@/lib/researchPassport";
 
 export const RESEARCH_PASSPORT_V2_SCHEMA = "neuroinsight-research-passport/v2" as const;
 export const RELEASE_MANIFEST_SCHEMA = "neuroinsight-release-manifest/v1" as const;
@@ -68,6 +68,9 @@ export async function buildResearchPassportV2(input: {
   }
   if (input.passportV1.analysis.model_version !== input.analysis.model_version) {
     throw new Error("Passport v1 and analysis model versions must match.");
+  }
+  if (input.analysis.model_version !== EXP005_MODEL_VERSION) {
+    throw new Error("This passport format embeds evidence specific to EXP-005.");
   }
 
   const payloadSha256 = await sha256CanonicalJson(input.passportV1);

@@ -5,7 +5,7 @@ import {
 } from "@/lib/inferenceApi";
 
 const REPEATABILITY_TOLERANCE = 1e-6;
-const EXP005_MODEL_VERSION = "bdneuro-v7-resnet50-head-only-exp005";
+export const EXP005_MODEL_VERSION = "bdneuro-v7-resnet50-head-only-exp005";
 
 export const EXP005_VALIDATION_EVIDENCE = Object.freeze({
   modelVersion: EXP005_MODEL_VERSION,
