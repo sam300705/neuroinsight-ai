@@ -59,6 +59,16 @@ def test_health_and_model_info_are_honest_about_model_state():
     assert all(item["status"] == "unavailable" for item in client.get("/api/v1/model-info").json())
 
 
+def test_root_sends_human_visitors_to_the_public_dashboard(monkeypatch):
+    monkeypatch.setenv("PUBLIC_DASHBOARD_URL", "https://dashboard.example")
+
+    response = client.get("/", follow_redirects=False)
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "https://dashboard.example"
+    assert response.headers["cache-control"] == "no-store"
+
+
 def test_operational_responses_are_not_cacheable_and_emit_bounded_structured_events(caplog):
     caplog.set_level(logging.INFO, logger="neuroinsight_api.app")
 
