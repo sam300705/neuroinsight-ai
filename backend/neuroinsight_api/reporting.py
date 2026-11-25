@@ -35,10 +35,12 @@ def build_report(analysis: AnalysisResponse, grad_cam_png: bytes | None = None, 
         finding = analysis.finding
         combined = {
             "possible_tumor (type unclear)": "Possible tumor - type unclear",
-            "no_tumor": "No tumor detected",
+            "no_tumor": "No tumor detected on this slice",
         }.get(finding.final_label, finding.final_label.capitalize())
-        rows = [
-            ("Combined finding", combined),
+        finding_rows = [("Combined finding", combined)]
+        if finding.final_label == "no_tumor":
+            finding_rows.append(("Interpretation", "The model can miss tumors on a slice, even when classifier confidence is high."))
+        rows = finding_rows + [
             ("2D outline uncertain", "Yes" if finding.mask_uncertain else "No"),
             ("Review reasons", "; ".join(finding.review_reasons)),
             ("Outline area in pixels", finding.tumor_area_px),

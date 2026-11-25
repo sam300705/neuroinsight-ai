@@ -65,3 +65,45 @@ def test_disagreement_keeps_class_confidence_separate_and_binds_only_the_mask(mo
     })
     assert correct.status_code == 200
     assert correct.content.startswith(b"%PDF")
+
+
+def test_negative_pdf_limits_the_finding_to_the_slice():
+    from io import BytesIO
+
+    from pypdf import PdfReader
+
+    from neuroinsight_api.reporting import build_report
+    from neuroinsight_api.schemas import AnalysisResponse, Measurement, V32Finding
+
+    analysis = AnalysisResponse(
+        request_id="test-request",
+        scan_id="11111111-1111-4111-8111-111111111111",
+        mode="classification",
+        status="complete",
+        model_version=MODEL_VERSION,
+        processing_time_ms=100,
+        manual_review_recommended=True,
+        measurement=Measurement(kind="unavailable", metadata_confirmed=False, limitation="No outline."),
+        warnings=[],
+        limitations=[],
+        finding=V32Finding(
+            classifier_class="no_tumor",
+            confidence=0.97,
+            final_label="no_tumor",
+            tumor_detected=False,
+            needs_review=False,
+            review_reasons=[],
+            mask_uncertain=False,
+            mask_notes=[],
+            image={"width": 128, "height": 128},
+            bbox=None,
+            tumor_area_px=None,
+            tumor_pct_of_image=None,
+            tumor_pct_of_brain=None,
+        ),
+    )
+
+    pages = PdfReader(BytesIO(build_report(analysis))).pages
+    text = " ".join(" ".join(page.extract_text() for page in pages).split())
+    assert "Combined finding: No tumor detected on this slice" in text
+    assert "The model can miss tumors on a slice, even when classifier confidence is high." in text

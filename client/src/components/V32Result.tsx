@@ -8,14 +8,14 @@ const labels = {
     glioma: "Glioma",
     meningioma: "Meningioma",
     pituitary: "Pituitary tumor",
-    no_tumor: "No tumor detected",
+    no_tumor: "No tumor detected on this slice",
     "possible_tumor (type unclear)": "Possible tumor — type unclear",
   },
   hi: {
     glioma: "ग्लायोमा",
     meningioma: "मेनिन्जियोमा",
     pituitary: "पिट्यूटरी ट्यूमर",
-    no_tumor: "ट्यूमर का पता नहीं चला",
+    no_tumor: "इस स्लाइस में ट्यूमर का पता नहीं चला",
     "possible_tumor (type unclear)": "संभावित ट्यूमर — प्रकार अस्पष्ट",
   },
 };
@@ -41,6 +41,7 @@ export function V32Result({ analysis, previewUrl }: Props) {
     noTumor: "ट्यूमर नहीं",
     confidence: "वर्गीकारक का कॉन्फिडेंस",
     confidenceNote: "यह स्कोर चार वर्गों में से चुने गए वर्ग का है।",
+    negativeNote: "वर्गीकारक का कॉन्फिडेंस अधिक होने पर भी मॉडल इस स्लाइस में ट्यूमर को पहचानने से चूक सकता है।",
     review: "समीक्षा के कारण",
     uncertain: "रूपरेखा अनिश्चित है।",
     unavailable: "2D क्षेत्रफल का अनुमान उपलब्ध नहीं है।",
@@ -59,6 +60,7 @@ export function V32Result({ analysis, previewUrl }: Props) {
     noTumor: "No tumor",
     confidence: "Classifier confidence",
     confidenceNote: "This score describes the classifier’s four-way decision.",
+    negativeNote: "The model can miss tumors on a slice, even when classifier confidence is high.",
     review: "Review reasons",
     uncertain: "The predicted outline is uncertain.",
     unavailable: "2D area estimate unavailable.",
@@ -95,6 +97,8 @@ export function V32Result({ analysis, previewUrl }: Props) {
       </div>
       <div className="space-y-3 rounded-2xl border bg-white p-6 shadow-sm">
         <p className="text-sm font-semibold text-teal-800">{analysis.model_version}</p>
+        {finding.final_label === "no_tumor" &&
+          <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{text.negativeNote}</p>}
         <dl className="space-y-3 text-sm">
           <div><dt className="font-semibold">{text.classifier}</dt><dd>{finding.class === "no_tumor"
             ? text.noTumor : findingLabel(finding.class, language)}</dd></div>
