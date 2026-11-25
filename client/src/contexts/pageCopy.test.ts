@@ -43,9 +43,9 @@ describe("dashboard bilingual page copy", () => {
   it("reports the verified Mode A experimental status without overstating Mode B", () => {
     expect(copyFor("en").home.modelTitle).toContain("Mode A");
     expect(copyFor("en").home.modelDetail).toContain("Mode B segmentation remains unavailable");
-    expect(copyFor("en").performance.intro).toContain("EXP-005");
+    expect(copyFor("en").performance.intro).toContain("v3.2");
     expect(copyFor("hi").home.modelTitle).toContain("मोड A");
-    expect(copyFor("hi").performance.intro).toContain("EXP-005");
+    expect(copyFor("hi").performance.intro).toContain("v3.2");
   });
 
   it("describes History as account-scoped Mode A metadata with fresh ownership-checked downloads", () => {
