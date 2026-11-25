@@ -27,19 +27,6 @@ from neuroinsight_api.upload_validation import UploadValidationError, validate_u
 client = TestClient(app)
 
 
-def test_root_shows_vercel_deployment_landing_page():
-    response = client.get("/")
-
-    assert response.status_code == 200
-    assert response.headers["content-type"].startswith("text/html")
-    assert response.headers["cache-control"] == "no-store"
-    assert "NeuroInsight AI" in response.text
-    assert "Deployed and responding." in response.text
-    assert "href=\"/docs\"" in response.text
-    assert "href=\"https://github.com/sam300705/neuroinsight-ai\"" in response.text
-    assert "not a medical diagnosis" in response.text.lower()
-
-
 def png_bytes() -> bytes:
     y, x = np.ogrid[:128, :128]
     radius = np.sqrt(((x - 63.5) / 48) ** 2 + ((y - 63.5) / 56) ** 2)

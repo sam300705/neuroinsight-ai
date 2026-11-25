@@ -15,7 +15,7 @@ from urllib.parse import urlsplit
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import JSONResponse, Response
 
 from . import analysis_receipts as receipt_module
 from .analysis_receipts import AnalysisReceiptError, issue_analysis_receipt, verify_analysis_receipt
@@ -38,98 +38,9 @@ public_request_limiter = FixedWindowRateLimiter(window_seconds=60, max_requests=
 assistant_request_limiter = FixedWindowRateLimiter(window_seconds=60, max_requests=10)
 shared_controls = SharedControls.from_env()
 limited_paths = {"/api/v1/analyze", "/api/v1/classify", "/api/v1/segment", "/api/v1/report", "/api/v1/chat"}
-observed_paths = limited_paths | {"/", "/health", "/ready", "/api/v1/model-info", "/api/v1/unsupported"}
+observed_paths = limited_paths | {"/health", "/ready", "/api/v1/model-info", "/api/v1/unsupported"}
 upload_paths = {"/api/v1/analyze", "/api/v1/classify", "/api/v1/segment"}
 DEFAULT_ALLOWED_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000"
-
-DEPLOYMENT_LANDING_PAGE = """<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#07111f">
-  <meta name="description" content="NeuroInsight AI academic inference API deployment status and links.">
-  <title>NeuroInsight AI — Vercel deployment</title>
-  <style>
-    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #07111f; color: #e8f0fb; }
-    * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100vh; background: radial-gradient(ellipse at 82% 0%, #14344a 0, #07111f 48rem); }
-    main { width: min(960px, calc(100% - 40px)); margin: 0 auto; padding: 58px 0 42px; }
-    .top { display: flex; align-items: center; justify-content: space-between; gap: 16px; color: #a8bdd2; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; }
-    .brand { display: flex; align-items: center; gap: 12px; color: #f4f8ff; font-weight: 700; letter-spacing: 0; text-transform: none; font-size: 15px; }
-    .mark { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid #39708b; border-radius: 11px; color: #72e0d0; background: #10263a; font-size: 18px; }
-    .pill { border: 1px solid #28556a; border-radius: 999px; padding: 8px 12px; color: #8ce8dc; background: #0d2430; font-size: 11px; font-weight: 700; letter-spacing: .09em; }
-    .hero { padding: 82px 0 36px; max-width: 760px; }
-    .eyebrow { margin: 0 0 16px; color: #70dfd0; font-size: 12px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
-    h1 { margin: 0; color: #f5f8ff; font-size: clamp(38px, 7vw, 68px); line-height: 1.04; letter-spacing: -.045em; }
-    .intro { max-width: 670px; margin: 22px 0 0; color: #a9bbce; font-size: 17px; line-height: 1.75; }
-    .status { display: flex; align-items: center; gap: 10px; margin-top: 28px; color: #d3e2ef; font-size: 14px; }
-    .dot { width: 9px; height: 9px; border-radius: 50%; background: #54dfaa; box-shadow: 0 0 14px #54dfaa80; }
-    .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 20px; }
-    .card { min-height: 132px; padding: 20px; border: 1px solid #20384d; border-radius: 16px; background: linear-gradient(145deg, #102033, #0b1726); }
-    .label { color: #8fa6bc; font-size: 12px; text-transform: uppercase; letter-spacing: .1em; }
-    .value { margin-top: 13px; color: #f2f7ff; font-size: 17px; font-weight: 650; }
-    .hint { margin-top: 7px; color: #91a6bb; font-size: 12px; line-height: 1.5; }
-    .links { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
-    .link { display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border: 1px solid #31516b; border-radius: 10px; color: #e7f2ff; background: #10243a; text-decoration: none; font-size: 14px; font-weight: 600; transition: border-color .15s, transform .15s; }
-    .link:hover { border-color: #69d9ce; transform: translateY(-1px); }
-    .link.primary { border-color: #65d9cd; color: #06171b; background: #65d9cd; }
-    .notice { margin-top: 38px; padding: 18px 20px; border-left: 2px solid #55bdba; border-radius: 0 12px 12px 0; color: #9eb2c6; background: #0c1b2a; font-size: 13px; line-height: 1.65; }
-    .notice strong { color: #dce8f4; }
-    footer { display: flex; justify-content: space-between; gap: 12px; margin-top: 42px; padding-top: 20px; border-top: 1px solid #1a3044; color: #71879b; font-size: 12px; }
-    a:focus-visible { outline: 2px solid #6fe0d3; outline-offset: 3px; }
-    @media (max-width: 680px) { main { padding-top: 28px; } .hero { padding-top: 58px; } .cards { grid-template-columns: 1fr; } .card { min-height: 0; } footer { flex-direction: column; } .pill { font-size: 9px; } }
-  </style>
-</head>
-<body>
-  <main>
-    <div class="top">
-      <div class="brand"><span class="mark" aria-hidden="true">N</span><span>NeuroInsight AI</span></div>
-      <span class="pill">VERCEL DEPLOYMENT</span>
-    </div>
-    <section class="hero" aria-labelledby="page-title">
-      <p class="eyebrow">Research inference service</p>
-      <h1 id="page-title">Deployed and responding.</h1>
-      <p class="intro">This Vercel deployment serves the NeuroInsight AI FastAPI backend. Use the links below to inspect the API, verify its health, or open the separate project dashboard.</p>
-      <div class="status"><span class="dot" aria-hidden="true"></span><span id="health-status" role="status">Checking live API health…</span></div>
-    </section>
-    <section class="cards" aria-label="Deployment information">
-      <article class="card"><div class="label">Deployment</div><div class="value">Vercel · FastAPI</div><div class="hint">Public API endpoint for the academic demo.</div></article>
-      <article class="card"><div class="label">Inference worker</div><div class="value" id="ready-status">Checking readiness…</div><div class="hint">Readiness is reported separately from API availability.</div></article>
-      <article class="card"><div class="label">Scope</div><div class="value">Academic research demo</div><div class="hint">Not a medical device or diagnostic service.</div></article>
-    </section>
-    <nav class="links" aria-label="Project links">
-      <a class="link primary" href="/docs">Explore API documentation <span aria-hidden="true">&nbsp;→</span></a>
-      <a class="link" href="/health">Health endpoint</a>
-      <a class="link" href="https://github.com/sam300705/neuroinsight-ai" target="_blank" rel="noopener noreferrer">GitHub source ↗</a>
-      <a class="link" href="https://neuroaiapp-gtbxy6cw.manus.space" target="_blank" rel="noopener noreferrer">Open project dashboard ↗</a>
-    </nav>
-    <aside class="notice"><strong>Research-use disclaimer.</strong> NeuroInsight AI is an experimental academic demonstration. It is not a medical diagnosis and must not replace assessment by a qualified radiologist. The Vercel service is the API; the interactive dashboard is hosted separately.</aside>
-    <footer><span>NeuroInsight AI · inference API</span><span>Live status is checked from this deployment.</span></footer>
-  </main>
-  <script>
-    async function updateServiceStatus() {
-      const health = document.getElementById('health-status');
-      const readiness = document.getElementById('ready-status');
-      try {
-        const response = await fetch('/health', { cache: 'no-store' });
-        const data = await response.json();
-        health.textContent = response.ok && data.status === 'ok' ? 'API is online · health check passed' : 'API health check returned an issue';
-      } catch (_) {
-        health.textContent = 'API health check could not be reached';
-      }
-      try {
-        const response = await fetch('/ready', { cache: 'no-store' });
-        const data = await response.json();
-        readiness.textContent = data.ready ? 'Worker ready' : 'Worker not configured';
-      } catch (_) {
-        readiness.textContent = 'Readiness unavailable';
-      }
-    }
-    updateServiceStatus();
-  </script>
-</body>
-</html>"""
 
 
 def _apply_operational_headers(response: Response) -> Response:
@@ -458,11 +369,6 @@ async def _read_bounded_upload(request: Request, file: UploadFile) -> bytes:
     if len(payload) > MAX_UPLOAD_BYTES:
         raise UploadValidationError(f"The upload exceeds the {MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit.")
     return payload
-
-
-@app.get("/", response_class=HTMLResponse, include_in_schema=False)
-async def deployment_homepage():
-    return HTMLResponse(DEPLOYMENT_LANDING_PAGE)
 
 
 @app.get("/health")

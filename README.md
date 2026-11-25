@@ -42,8 +42,6 @@ The **Research Explanation Assistant** explains research scope, confidence/calib
 | Vercel inference production target | `main`-linked | Separate from feature-branch previews |
 | PR #1 inference preview | Commit-specific `READY` preview when checks pass | Non-production; not a production promotion |
 
-The Vercel inference URL serves a deployment landing page at `/`, API documentation at `/docs`, and a health check at `/health`. It is the API service, not the interactive dashboard; the dashboard remains at the public URL above.
-
 The final code-owned release candidate is tracked in [`docs/FINAL_RELEASE_CANDIDATE.md`](docs/FINAL_RELEASE_CANDIDATE.md). Passing CI or receiving a `READY` preview is not an authorization to merge, publish the managed dashboard, or promote production.
 
 ## Safe demo workflow
