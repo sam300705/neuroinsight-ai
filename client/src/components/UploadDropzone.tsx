@@ -1,5 +1,5 @@
-import { FileUp, FileWarning, Image, ScanLine } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { FileUp, Image, ScanLine } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import type { AnalysisMode } from "@shared/neuroinsight";
 import { useLanguage } from "@/contexts/LanguageContext";
 
@@ -34,8 +34,142 @@ export async function validateFileContent(file: File, mode: AnalysisMode): Promi
   try { const bitmap = await createImageBitmap(file); const safetyError = imagePixelSafetyError(bitmap.width, bitmap.height); const warnings = imageQualityWarnings(bitmap.width, bitmap.height); bitmap.close(); return { messages: safetyError ? [safetyError] : [], warnings }; } catch { return { messages: ["The selected image could not be decoded and may be corrupted."], warnings: [] }; }
 }
 
-export function UploadDropzone({ mode, onSelect }: { mode: AnalysisMode; onSelect: (file: File, check: LocalFileCheck) => void }) {
-  const { language } = useLanguage(); const hindi = language === "hi"; const [dragging, setDragging] = useState(false); const inputRef = useRef<HTMLInputElement>(null); const accept = mode === "classification" ? ".png,.jpg,.jpeg,image/png,image/jpeg" : ".nii,.nii.gz,application/x-nifti,application/nifti,application/gzip";
-  const select = useCallback(async (file?: File) => { if (!file) return; const initial = validateLocalFile(file, mode); const content = initial.valid ? await validateFileContent(file, mode) : { messages: [], warnings: [] }; const messages = [...initial.messages, ...content.messages]; onSelect(file, { valid: messages.length === 0, messages, warnings: [...initial.warnings, ...content.warnings], previewUrl: messages.length === 0 ? initial.previewUrl : undefined }); }, [mode, onSelect]);
-  return <div onDragOver={event => { event.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={event => { event.preventDefault(); setDragging(false); void select(event.dataTransfer.files[0]); }} className={`relative rounded-2xl border-2 border-dashed p-8 text-center transition ${dragging ? "border-teal-600 bg-teal-50" : "border-slate-300 bg-slate-50"}`} aria-describedby="upload-help"><input ref={inputRef} id="mri-file-input" type="file" accept={accept} className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0 focus-visible:outline-none" aria-label={hindi ? "MRI फ़ाइल चुनें" : "Choose an MRI file"} onChange={event => void select(event.target.files?.[0])} /><span className="mx-auto grid size-12 place-items-center rounded-2xl bg-white text-teal-800 shadow-sm" aria-hidden="true">{mode === "classification" ? <Image className="size-6" /> : <ScanLine className="size-6" />}</span><h2 className="mt-4 font-semibold">{hindi ? "समर्थित MRI फ़ाइल यहाँ छोड़ें" : "Drop a supported MRI file here"}</h2><p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-600">{mode === "classification" ? (hindi ? "मोड A PNG या JPEG स्वीकार करता है। कार्यस्थल विश्लेषण स्थिति खुलने से पहले एक्सटेंशन, MIME प्रकार, आकार, हस्ताक्षर और ब्राउज़र डिकोड जाँचता है।" : "Mode A accepts PNG or JPEG. The workspace checks extension, MIME type, size, signature, and browser decode before any analysis status is opened.") : (hindi ? "मोड B संगत NIfTI .nii या .nii.gz वॉल्यूम स्वीकार करता है। कार्यस्थल सर्वर-पक्ष मेटाडेटा सत्यापन से पहले एक्सटेंशन, MIME प्रकार, आकार और NIfTI/gzip हेडर जाँचता है।" : "Mode B accepts a compatible NIfTI .nii or .nii.gz volume. The workspace checks extension, MIME type, size, and NIfTI/gzip header before server-side metadata verification.")}</p><button type="button" onClick={() => inputRef.current?.click()} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-teal-800 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-teal-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-700" aria-controls="mri-file-input"><FileUp className="size-4" aria-hidden="true" />{hindi ? "फ़ाइल चुनें" : "Choose file"}</button><p id="upload-help" className="mt-4 flex justify-center gap-2 text-xs text-slate-500"><FileWarning className="size-4 shrink-0" aria-hidden="true" />{hindi ? "सामग्री जाँच प्रारंभिक है; पूर्ण मोडैलिटी और मेटाडेटा सत्यापन सर्वर-पक्ष पर रहता है।" : "Content checks are preliminary; full modality and metadata validation remains server-side."}</p></div>;
+export function UploadDropzone({
+  mode,
+  disabled,
+  onCheckingChange,
+  onSelect,
+}: {
+  mode: AnalysisMode;
+  disabled: boolean;
+  onCheckingChange: (checking: boolean) => void;
+  onSelect: (file: File, check: LocalFileCheck) => void;
+}) {
+  const { language } = useLanguage();
+  const hindi = language === "hi";
+  const [dragging, setDragging] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const mounted = useRef(false);
+  const pending = useRef(false);
+  const preview = useRef<string | undefined>(undefined);
+  const accept =
+    mode === "classification"
+      ? ".png,.jpg,.jpeg,image/png,image/jpeg"
+      : ".nii,.nii.gz,application/x-nifti,application/nifti,application/gzip";
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      if (preview.current) URL.revokeObjectURL(preview.current);
+    };
+  }, []);
+
+  async function select(file?: File) {
+    if (!file || disabled || pending.current) return;
+    pending.current = true;
+    setChecking(true);
+    onCheckingChange(true);
+
+    if (preview.current) URL.revokeObjectURL(preview.current);
+    preview.current = undefined;
+    const initial = validateLocalFile(file, mode);
+    const content = initial.valid
+      ? await validateFileContent(file, mode).catch(() => ({
+          messages: [
+            hindi
+              ? "चुनी हुई फ़ाइल पढ़ी नहीं जा सकी।"
+              : "The selected file could not be read.",
+          ],
+          warnings: [],
+        }))
+      : { messages: [], warnings: [] };
+    const messages = [...initial.messages, ...content.messages];
+    const valid = messages.length === 0;
+    if (initial.previewUrl && (!mounted.current || !valid))
+      URL.revokeObjectURL(initial.previewUrl);
+    pending.current = false;
+    if (!mounted.current) return;
+
+    preview.current = valid ? initial.previewUrl : undefined;
+    onSelect(file, {
+      valid,
+      messages,
+      warnings: [...initial.warnings, ...content.warnings],
+      previewUrl: preview.current,
+    });
+    setChecking(false);
+    onCheckingChange(false);
+  }
+
+  return (
+    <div
+      onDragOver={event => {
+        event.preventDefault();
+        if (!disabled && !checking) setDragging(true);
+      }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={event => {
+        event.preventDefault();
+        setDragging(false);
+        void select(event.dataTransfer.files[0]);
+      }}
+      className={`rounded-2xl border-2 border-dashed p-6 text-center transition sm:p-8 ${dragging ? "border-blue-600 bg-blue-50" : "border-slate-300 bg-slate-50"}`}
+      aria-busy={checking}
+    >
+      <input
+        ref={inputRef}
+        id="mri-file-input"
+        type="file"
+        accept={accept}
+        hidden
+        disabled={disabled || checking}
+        aria-label={hindi ? "MRI फ़ाइल चुनें" : "Choose an MRI file"}
+        onChange={event => {
+          const file = event.currentTarget.files?.[0];
+          event.currentTarget.value = "";
+          void select(file);
+        }}
+      />
+      <span
+        className="mx-auto grid size-12 place-items-center rounded-2xl bg-white text-blue-800 shadow-sm"
+        aria-hidden="true"
+      >
+        {mode === "classification" ? (
+          <Image className="size-6" />
+        ) : (
+          <ScanLine className="size-6" />
+        )}
+      </span>
+      <h3 className="mt-3 font-semibold">
+        {hindi ? "MRI फ़ाइल यहाँ छोड़ें" : "Drop an MRI file here"}
+      </h3>
+      <p id="upload-help" className="mt-2 text-sm leading-6 text-slate-600">
+        {mode === "classification"
+          ? hindi
+            ? "एक PNG या JPEG · अधिकतम 50 MB और 4 मेगापिक्सेल"
+            : "One PNG or JPEG · Up to 50 MB and 4 megapixels"
+          : hindi
+            ? "NIfTI (.nii या .nii.gz) · अधिकतम 50 MB"
+            : "NIfTI (.nii or .nii.gz) · Up to 50 MB"}
+      </p>
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        disabled={disabled || checking}
+        className="mt-4 inline-flex items-center gap-2 rounded-xl bg-blue-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 disabled:bg-slate-600"
+        aria-controls="mri-file-input"
+        aria-describedby="upload-help"
+      >
+        <FileUp className="size-4" aria-hidden="true" />
+        {hindi ? "फ़ाइल चुनें" : "Choose an MRI file"}
+      </button>
+      {checking && (
+        <p role="status" className="mt-3 text-sm text-slate-600">
+          {hindi ? "फ़ाइल जाँची जा रही है…" : "Checking the selected file…"}
+        </p>
+      )}
+    </div>
+  );
 }

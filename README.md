@@ -6,7 +6,7 @@ NeuroInsight AI is a **non-clinical academic demonstration** of explainable 2D b
 
 ## What is available
 
-Mode A uses the NeuroInsight AI v3.2 handoff to combine an experimental four-way classifier with a predicted 2D outline when available. The Results page separates the combined finding, classifier confidence, review reasons, and classifier attention. Area estimates use source-image pixels and explicit percentage denominators. See [v3.2 provisioning](docs/V32_HANDOFF.md) for the runtime and private verification workflow.
+Mode A uses the NeuroInsight AI v3.2 handoff to combine an experimental four-way classifier with a predicted 2D outline when available. The Results page separates the combined finding, classifier confidence, review reasons, and classifier attention. Area estimates use source-image pixels and explicit percentage denominators. See [v3.2 provisioning](docs/V32_HANDOFF.md) for the private Drive handoff, Azure VM runtime, and verification workflow.
 
 Historical EXP-005 scored accuracy `0.8099`, macro-F1 `0.8080`, and weighted-F1 `0.8110` on the audited BDNeuro-MRI v7 image-level test split. The v3.2 handoff used a different dataset. These records do not measure a change in performance between models.
 
