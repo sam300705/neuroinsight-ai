@@ -115,7 +115,7 @@ export function UploadDropzone({
         setDragging(false);
         void select(event.dataTransfer.files[0]);
       }}
-      className={`rounded-2xl border-2 border-dashed p-6 text-center transition sm:p-8 ${dragging ? "border-teal-600 bg-teal-50" : "border-slate-300 bg-slate-50"}`}
+      className={`rounded-2xl border-2 border-dashed p-6 text-center transition sm:p-8 ${dragging ? "border-blue-600 bg-blue-50" : "border-slate-300 bg-slate-50"}`}
       aria-busy={checking}
     >
       <input
@@ -133,7 +133,7 @@ export function UploadDropzone({
         }}
       />
       <span
-        className="mx-auto grid size-12 place-items-center rounded-2xl bg-white text-teal-800 shadow-sm"
+        className="mx-auto grid size-12 place-items-center rounded-2xl bg-white text-blue-800 shadow-sm"
         aria-hidden="true"
       >
         {mode === "classification" ? (
@@ -158,7 +158,7 @@ export function UploadDropzone({
         type="button"
         onClick={() => inputRef.current?.click()}
         disabled={disabled || checking}
-        className="mt-4 inline-flex items-center gap-2 rounded-xl bg-teal-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 disabled:bg-slate-600"
+        className="mt-4 inline-flex items-center gap-2 rounded-xl bg-blue-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 disabled:bg-slate-600"
         aria-controls="mri-file-input"
         aria-describedby="upload-help"
       >

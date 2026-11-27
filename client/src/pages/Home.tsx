@@ -1,113 +1,150 @@
 import {
+  Activity,
   ArrowRight,
   BrainCircuit,
-  FileCheck2,
+  Focus,
   Layers3,
+  ScanLine,
   ShieldAlert,
 } from "lucide-react";
 import { Link } from "wouter";
-import { AcademicDisclaimer } from "@/components/ResearchDisclaimers";
-import { copyFor } from "@/contexts/pageCopy";
 import { useLanguage } from "@/contexts/LanguageContext";
 
-const featureIcons = [Layers3, BrainCircuit, ShieldAlert, FileCheck2];
+const features = [
+  {
+    icon: BrainCircuit,
+    en: [
+      "Tumour type",
+      "Glioma, meningioma, pituitary tumour or no tumour detected.",
+    ],
+    hi: [
+      "ट्यूमर का वर्ग",
+      "ग्लायोमा, मेनिन्जियोमा, पिट्यूटरी ट्यूमर या कोई ट्यूमर नहीं मिला।",
+    ],
+  },
+  {
+    icon: ScanLine,
+    en: [
+      "Outline and area",
+      "Inspect the predicted outline and its relative area on the slice.",
+    ],
+    hi: [
+      "रूपरेखा और क्षेत्रफल",
+      "स्लाइस पर अनुमानित रूपरेखा और उसका सापेक्ष क्षेत्रफल देखें।",
+    ],
+  },
+  {
+    icon: Focus,
+    en: [
+      "Attention map",
+      "See which regions influenced the classifier with Grad-CAM.",
+    ],
+    hi: [
+      "अटेंशन मैप",
+      "Grad-CAM से देखें कि किन क्षेत्रों ने वर्गीकरण को प्रभावित किया।",
+    ],
+  },
+  {
+    icon: ShieldAlert,
+    en: [
+      "Review flags",
+      "See when low confidence or model disagreement calls for review.",
+    ],
+    hi: [
+      "समीक्षा संकेत",
+      "कम कॉन्फिडेंस या मॉडल की असहमति होने पर समीक्षा का कारण देखें।",
+    ],
+  },
+] as const;
 
 export default function Home() {
-  const { language } = useLanguage();
-  const text = copyFor(language).home;
+  const { language, t } = useLanguage();
+  const hindi = language === "hi";
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <section className="grid overflow-hidden rounded-3xl bg-slate-950 text-white shadow-lg lg:grid-cols-[1.15fr_1fr]">
-        <div className="bg-[radial-gradient(ellipse_at_bottom_left,_#134e4a,_transparent_72%)] p-6 sm:p-10">
-          <p className="text-sm font-medium text-teal-200">{text.eyebrow}</p>
-          <h1 className="mt-4 max-w-xl text-4xl font-semibold leading-[1.12] tracking-tight sm:text-5xl">
-            {text.title}
-          </h1>
-          <p className="mt-4 max-w-lg text-base leading-7 text-slate-300">
-            {text.intro}
+    <div className="space-y-7 sm:space-y-9">
+      <section className="workspace-hero grid gap-7 rounded-[1.75rem] p-6 sm:p-9 lg:grid-cols-[1.06fr_.94fr] lg:items-center lg:gap-12 lg:p-12">
+        <div>
+          <p className="inline-flex items-center gap-2 rounded-full border border-sky-300/25 bg-sky-300/10 px-3 py-1.5 text-xs font-semibold text-sky-100">
+            <Activity className="size-3.5" aria-hidden="true" />
+            {hindi ? "MRI शोध · v3.2" : "MRI research · v3.2"}
           </p>
-          <div className="mt-7 flex flex-wrap gap-3">
+          <h1 className="mt-6 max-w-xl text-[clamp(2.6rem,6vw,4.7rem)] font-semibold leading-[.99] tracking-[-.055em]">
+            {hindi ? "मस्तिष्क MRI का विश्लेषण करें" : "Brain MRI analysis"}
+          </h1>
+          <p className="mt-5 max-w-lg text-base leading-7 text-slate-300 sm:text-lg">
+            {hindi
+              ? "एक 2D स्लाइस अपलोड करें और मॉडल का वर्गीकरण, रूपरेखा, क्षेत्रफल और समीक्षा संकेत देखें।"
+              : "Upload one 2D slice to review the model’s classification, predicted outline, area and uncertainty."}
+          </p>
+          <div className="mt-7 flex flex-wrap items-center gap-3">
             <Link
               href="/analyse"
-              className="inline-flex items-center gap-2 rounded-xl bg-teal-300 px-4 py-3 text-sm font-semibold text-teal-950 hover:bg-teal-200 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
+              className="workspace-hero-action inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold"
             >
-              {text.begin} <ArrowRight className="size-4" aria-hidden="true" />
+              {t("analyze")}{" "}
+              <ArrowRight className="size-4" aria-hidden="true" />
             </Link>
             <Link
               href="/methodology"
-              className="inline-flex items-center rounded-xl border border-slate-500 px-4 py-3 text-sm font-semibold hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
+              className="rounded-xl border border-slate-500 px-4 py-3 text-sm font-semibold text-slate-100 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300"
             >
-              {text.methodology}
+              {t("methodology")}
             </Link>
           </div>
+          <p className="mt-5 flex items-center gap-2 text-sm leading-5 text-slate-300">
+            <ShieldAlert
+              className="size-4 shrink-0 text-sky-200"
+              aria-hidden="true"
+            />
+            {t("academic")}
+          </p>
         </div>
-        <div className="border-t border-slate-700 bg-slate-900 p-6 sm:p-8 lg:border-t-0 lg:border-l">
-          <h2 className="font-semibold text-teal-200">{text.journeyTitle}</h2>
-          <ol className="mt-4 list-decimal space-y-3 pl-5 marker:font-mono marker:text-teal-200">
-            {text.journey.map(([title, detail]) => (
-              <li
-                key={title}
-                className="border-b border-slate-700 pb-3 pl-2 last:border-b-0 last:pb-0"
-              >
-                <p className="text-sm font-semibold">{title}</p>
-                <p className="mt-1 text-sm leading-5 text-slate-300">
+        <figure className="overflow-hidden rounded-2xl border border-sky-200/25 bg-[#080e1b]">
+          <div className="flex items-center gap-2 border-b border-white/15 bg-white/5 px-4 py-3 text-sm font-medium text-slate-200">
+            <Layers3 className="size-4 text-sky-200" aria-hidden="true" />
+            {hindi ? "अक्षीय MRI स्लाइस" : "Axial MRI slice"}
+          </div>
+          <img
+            src="/images/axial-mri-illustration.webp"
+            alt={
+              hindi
+                ? "मस्तिष्क की अक्षीय स्लाइस का चित्र"
+                : "Illustration of an axial brain MRI slice"
+            }
+            width={720}
+            height={540}
+            fetchPriority="high"
+            className="aspect-[4/3] max-h-[22rem] w-full object-contain"
+          />
+          <figcaption className="border-t border-white/15 px-4 py-2.5 text-xs text-slate-300">
+            {hindi ? "इनपुट का कृत्रिम उदाहरण" : "Synthetic input illustration"}
+          </figcaption>
+        </figure>
+      </section>
+      <section aria-labelledby="analysis-outputs">
+        <h2
+          id="analysis-outputs"
+          className="mb-4 text-xl font-semibold tracking-tight sm:text-2xl"
+        >
+          {hindi ? "विश्लेषण के परिणाम" : "What the analysis shows"}
+        </h2>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {features.map(({ icon: Icon, ...labels }) => {
+            const [title, detail] = labels[language];
+            return (
+              <article key={title} className="workspace-panel p-5">
+                <span className="grid size-10 place-items-center rounded-xl bg-blue-100 text-blue-800">
+                  <Icon className="size-5" aria-hidden="true" />
+                </span>
+                <h3 className="mt-4 font-semibold">{title}</h3>
+                <p className="mt-1.5 text-sm leading-6 text-slate-600">
                   {detail}
                 </p>
-              </li>
-            ))}
-          </ol>
+              </article>
+            );
+          })}
         </div>
-      </section>
-      <AcademicDisclaimer />
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {text.features.map(([title, detail], index) => {
-          const Icon = featureIcons[index]!;
-          return (
-            <article
-              key={title}
-              className="rounded-2xl border border-slate-200 bg-white p-5"
-            >
-              <Icon className="size-5 text-teal-800" aria-hidden="true" />
-              <h2 className="mt-3 font-semibold">{title}</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-600">{detail}</p>
-            </article>
-          );
-        })}
-      </section>
-      <section className="grid gap-4 lg:grid-cols-[1.2fr_.8fr]">
-        <article className="rounded-2xl border border-slate-200 bg-white p-6">
-          <h2 className="text-lg font-semibold">{text.modelTitle}</h2>
-          <p className="mt-2 text-sm leading-6 text-slate-600">
-            {text.modelDetail}
-          </p>
-          <p className="mt-4 rounded-xl bg-teal-50 p-3 text-sm text-teal-950">
-            <strong className="block">{text.evidenceLabel}</strong>
-            {text.evidenceDetail}
-          </p>
-          <Link
-            href="/performance"
-            className="mt-4 inline-flex items-center gap-2 rounded-lg px-1 py-2 text-sm font-semibold text-teal-800 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
-          >
-            {text.evidence} <ArrowRight className="size-4" aria-hidden="true" />
-          </Link>
-        </article>
-        <article className="rounded-2xl border border-amber-200 bg-amber-50 p-6">
-          <h2 className="text-lg font-semibold text-amber-950">
-            {text.cannotTitle}
-          </h2>
-          <ul className="mt-3 space-y-2 text-sm leading-6 text-amber-950">
-            {text.cannot.map(item => (
-              <li key={item} className="flex gap-2">
-                <ShieldAlert
-                  className="mt-1 size-4 shrink-0"
-                  aria-hidden="true"
-                />
-                {item}
-              </li>
-            ))}
-          </ul>
-        </article>
       </section>
     </div>
   );

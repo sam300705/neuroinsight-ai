@@ -2,6 +2,10 @@ import { OAUTH_STATE_COOKIE, encodeOAuthState } from "@shared/const";
 
 export { COOKIE_NAME, SESSION_MAX_AGE_MS } from "@shared/const";
 
+export const loginConfigured = Boolean(
+  import.meta.env.VITE_OAUTH_PORTAL_URL && import.meta.env.VITE_APP_ID
+);
+
 // Start the Manus OAuth login. Call this from an event handler or effect at the
 // moment you want to navigate, e.g. `onClick={() => startLogin()}`.
 //

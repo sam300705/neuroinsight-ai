@@ -12,7 +12,6 @@ import {
   UploadDropzone,
   type LocalFileCheck,
 } from "@/components/UploadDropzone";
-import { AcademicDisclaimer } from "@/components/ResearchDisclaimers";
 import {
   useAnalysis,
   type ClientAnalysisState,
@@ -132,21 +131,19 @@ export default function Analyse() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <header className="rounded-3xl bg-slate-950 p-6 text-white shadow-lg sm:p-8">
-        <p className="text-sm font-medium text-teal-200">
-          {text.classification}
-        </p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
+      <header className="workspace-hero rounded-3xl p-6 sm:p-9">
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
           {text.title}
         </h1>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
-          {text.classScope}
+          {hindi
+            ? "शोध के लिए एक 2D PNG या JPEG स्लाइस चुनें।"
+            : "Choose one PNG or JPEG slice for research analysis."}
         </p>
       </header>
-      <AcademicDisclaimer />
 
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
-        <section className="rounded-2xl border border-slate-200 bg-white p-5">
+        <section className="workspace-panel p-5">
           <h2 className="font-semibold">
             {hindi ? "डेटा उपयोग की पुष्टि" : "Confirm data use"}
           </h2>
@@ -160,13 +157,13 @@ export default function Analyse() {
                 setSelection(null);
                 setServiceError(null);
               }}
-              className="mt-1 size-4 shrink-0 accent-teal-800"
+              className="mt-1 size-4 shrink-0 accent-blue-800"
             />
             <span>{text.dataUseLabel}</span>
           </label>
         </section>
 
-        <section className="min-w-0 space-y-4 rounded-2xl border border-slate-200 bg-white p-5">
+        <section className="min-w-0 space-y-4 workspace-panel p-5">
           <h2 className="font-semibold">
             {hindi ? "शोध छवि" : "Research image"}
           </h2>
@@ -193,7 +190,7 @@ export default function Analyse() {
           <div aria-live="polite">
             {selection && (
               <div
-                className={`flex items-start gap-3 rounded-2xl border p-4 ${selection.check.valid ? "border-teal-200 bg-teal-50" : "border-rose-200 bg-rose-50"}`}
+                className={`flex items-start gap-3 rounded-2xl border p-4 ${selection.check.valid ? "border-blue-200 bg-blue-50" : "border-rose-200 bg-rose-50"}`}
               >
                 {selection.check.previewUrl ? (
                   <img
@@ -203,7 +200,7 @@ export default function Analyse() {
                   />
                 ) : selection.check.valid ? (
                   <CheckCircle2
-                    className="size-5 shrink-0 text-teal-800"
+                    className="size-5 shrink-0 text-blue-800"
                     aria-hidden="true"
                   />
                 ) : (
@@ -226,8 +223,8 @@ export default function Analyse() {
                       ))}
                     </ul>
                   ) : (
-                    <p className="mt-2 text-sm text-teal-900">
-                      {text.preliminary}
+                    <p className="mt-2 text-sm text-blue-900">
+                      {hindi ? "फ़ाइल तैयार है।" : "File ready for analysis."}
                     </p>
                   )}
                   {selection.check.warnings.length > 0 && (
@@ -265,7 +262,7 @@ export default function Analyse() {
                 checking ||
                 processing
               }
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-teal-800 px-5 py-3 text-sm font-semibold text-white hover:bg-teal-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 disabled:cursor-not-allowed disabled:bg-slate-600 max-sm:w-full"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-800 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 disabled:cursor-not-allowed disabled:bg-slate-600 max-sm:w-full"
             >
               {processing ? (
                 <>
