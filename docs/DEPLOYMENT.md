@@ -1,5 +1,7 @@
 # Deployment Handover
 
+For the current v3.2 release, follow [v3.2 handoff provisioning](V32_HANDOFF.md). The v3.2 FastAPI service talks to the worker over a private Unix socket on the Azure VM. The ONNX and Vercel inference examples below describe the historical EXP-005 deployment.
+
 The managed Node dashboard and the Python validation service are intentionally deployable as **separate components**. This keeps the dashboard compatible with managed hosting while isolating the scientific Python runtime. The project deliberately does **not** package exploratory model weights into either component.
 
 | Component | Packaging state | Operational boundary |

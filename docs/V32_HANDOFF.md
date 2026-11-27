@@ -1,6 +1,6 @@
 # NeuroInsight AI v3.2 handoff provisioning
 
-Keep the three supplied ZIP parts and their extracted contents in private storage outside the checkout. The provisioner accepts filenames with any prefix, including upload copy markers, and reconstructs the three files in suffix order. It checks the expected 1,120,009,578-byte length and SHA-256 before parsing the ZIP. It validates member paths and types and checks CRCs while extracting to a private staging directory. The destination appears after successful extraction. Extraction requires free space for both the reconstructed ZIP and its expanded contents.
+Keep the supplied ZIP or its three parts and all extracted contents in private storage outside the checkout. The provisioner accepts filenames with any prefix, including upload copy markers, and reconstructs the three files in suffix order. It checks the expected 1,120,009,578-byte length and SHA-256 before parsing the ZIP. It validates member paths and types and checks CRCs while extracting to a private staging directory. The destination appears after successful extraction. Extraction requires free space for both the reconstructed ZIP and its expanded contents.
 
 Run from the checkout root with Python 3.12. Use the actual private path to each part and a fresh destination name.
 
@@ -25,6 +25,34 @@ python3 scripts/provision_v32_handoff.py \
   --output /workspace/private-neuroinsight/handoff-v32 /workspace/private-neuroinsight/handoff.zip
 ```
 
+### Place the handoff on the Azure VM
+
+The verified Drive archive, `NeuroInsight_AI_Handoff.zip`, is the v3.2 **model handoff**. It includes the model artifacts, pipeline source, eight regression images, and an expected-results CSV. It does not contain the full training dataset. The regression images and CSV are for private verification. The worker only uses the model artifacts and pipeline source from the archive at runtime.
+
+Keep the archive in an access-controlled Drive location. Transfer an authorized copy directly to the Azure VM using your existing private SSH access, or use an access-controlled Azure Blob container if you need a shared private copy. The public GitHub repository carries the application, worker wrapper, checksum manifest, and provisioning script.
+
+For the direct SSH method, use the real VM login and run these commands from the machine that holds the downloaded ZIP:
+
+```bash
+VM_LOGIN="your-user@your-vm-host"
+HANDOFF_ZIP="/private/path/NeuroInsight_AI_Handoff.zip"
+ssh "$VM_LOGIN" 'umask 077; mkdir -p "$HOME/neuroinsight-private"'
+scp "$HANDOFF_ZIP" "$VM_LOGIN:neuroinsight-private/"
+```
+
+On the VM, as the intended runtime user, go to the deployed Git checkout and run:
+
+```bash
+umask 077
+export NEUROINSIGHT_PRIVATE="$HOME/neuroinsight-private"
+python3 scripts/provision_v32_handoff.py \
+  --output "$NEUROINSIGHT_PRIVATE/handoff-v32" \
+  "$NEUROINSIGHT_PRIVATE/NeuroInsight_AI_Handoff.zip"
+export NEUROINSIGHT_HANDOFF="$NEUROINSIGHT_PRIVATE/handoff-v32/NeuroInsight_AI_Handoff"
+```
+
+The example uses a fresh `handoff-v32` directory. For staged replacement, use a fresh versioned directory and keep the existing worker pointed at its current model directory until the new worker passes readiness and the private regression check.
+
 Keep the supplied source, weights, CSV, and images read-only.
 
 The runtime expects the extracted `NeuroInsight_AI_Handoff/backend/models` directory and its sibling `neuroinsight_pipeline.py`. The checked-in artifact manifest fingerprints the supplied source, the three classifier weights, classifier configuration, all three segmentation configuration files, and each of the five unpacked checkpoint trees. Set the model directory using `--models`. The worker loads the three deployed EfficientNetV2-S folds and five U-Net/ResNet34 folds once, restricts PyTorch loading to weights, checks state keys, and exposes its socket after a successful real forward pass.
@@ -32,7 +60,7 @@ The runtime expects the extracted `NeuroInsight_AI_Handoff/backend/models` direc
 Run these commands from the repository root on Linux with Python 3.12, uv, Node 22, and pnpm 10.4.1. Set `NEUROINSIGHT_PRIVATE` to a private directory outside the checkout and `NEUROINSIGHT_HANDOFF` to the extracted handoff root. Use the same values in each service terminal.
 
 ```bash
-export NEUROINSIGHT_PRIVATE=/workspace/private-neuroinsight
+export NEUROINSIGHT_PRIVATE="$HOME/neuroinsight-private"
 export NEUROINSIGHT_HANDOFF="$NEUROINSIGHT_PRIVATE/handoff-v32/NeuroInsight_AI_Handoff"
 umask 077
 uv sync --directory backend --locked --extra test
@@ -98,6 +126,6 @@ The source overlay and classifier attention are transient. The signed report can
 
 ## Owner deployment and rollback
 
-Use a long-running Linux API and worker on the same host or mounted private Unix-socket volume. Configure receipt signing, existing shared abuse/replay controls, and the authorized dashboard HTTPS origin on that API. Set the dashboard build's `VITE_INFERENCE_API_BASE_URL` to the new API HTTPS origin. The lightweight serverless entry point keeps validation, reporting and chat but cannot run this worker. Promote only after private environment and owner acceptance. No production settings are changed by these steps.
+Run FastAPI and the v3.2 worker on the Azure VM so both can access the same private Unix socket. Keep the worker socket local. Serve FastAPI through the VM’s HTTPS reverse proxy and point the hosted dashboard at that HTTPS origin. Configure receipt signing, existing shared abuse/replay controls, and the authorized dashboard HTTPS origin on that API. Set the dashboard build's `VITE_INFERENCE_API_BASE_URL` to the new API HTTPS origin. The lightweight serverless entry point keeps validation, reporting and chat but cannot run this worker. Promote only after private environment and owner acceptance. No production settings are changed by these steps.
 
 To roll back a deployed application, restore the previous approved dashboard and API build and their previous configuration together. Stop the v3.2 worker when it has no callers. Keep the database and saved artifacts. No database migration is required for the v3.2 summary.

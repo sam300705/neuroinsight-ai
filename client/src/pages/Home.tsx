@@ -1,4 +1,10 @@
-import { ArrowRight, BrainCircuit, ChartNoAxesCombined, FileCheck2, Layers3, ShieldAlert, UsersRound } from "lucide-react";
+import {
+  ArrowRight,
+  BrainCircuit,
+  FileCheck2,
+  Layers3,
+  ShieldAlert,
+} from "lucide-react";
 import { Link } from "wouter";
 import { AcademicDisclaimer } from "@/components/ResearchDisclaimers";
 import { copyFor } from "@/contexts/pageCopy";
@@ -9,5 +15,100 @@ const featureIcons = [Layers3, BrainCircuit, ShieldAlert, FileCheck2];
 export default function Home() {
   const { language } = useLanguage();
   const text = copyFor(language).home;
-  return <div className="mx-auto max-w-6xl space-y-7"><section className="overflow-hidden rounded-3xl bg-[radial-gradient(circle_at_top_right,_#d9f2ef,_transparent_34%),linear-gradient(135deg,_#0c3b3a,_#0f5953)] px-6 py-10 text-white shadow-xl sm:px-10 sm:py-14"><p className="text-xs font-semibold uppercase tracking-[0.18em] text-teal-200">{text.eyebrow}</p><h1 className="mt-4 max-w-3xl text-4xl font-semibold tracking-tight sm:text-5xl">{text.title}</h1><p className="mt-5 max-w-3xl text-base leading-7 text-teal-50">{text.intro}</p><div className="mt-8 flex flex-wrap gap-3"><Link href="/analyse" className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-teal-950 shadow-sm transition hover:bg-teal-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-white">{text.begin} <ArrowRight className="size-4" /></Link><Link href="/methodology" className="inline-flex items-center gap-2 rounded-xl border border-teal-300/50 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white">{text.methodology}</Link></div></section><AcademicDisclaimer /><section className="grid gap-4 sm:grid-cols-2">{text.features.map(([title, detail], index) => { const Icon = featureIcons[index]!; return <article key={title} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><span className="grid size-10 place-items-center rounded-xl bg-teal-50 text-teal-800"><Icon className="size-5" /></span><h2 className="mt-4 text-lg font-semibold">{title}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{detail}</p></article>; })}</section><section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-xl bg-teal-50 text-teal-800"><UsersRound className="size-5" /></span><div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-teal-700">{text.journeyTitle}</p><h2 className="mt-1 text-xl font-semibold">{text.modelTitle}</h2></div></div><ol className="mt-5 grid gap-3 md:grid-cols-4">{text.journey.map(([title, detail], index) => <li key={title} className="rounded-xl bg-slate-50 p-4"><p className="text-xs font-semibold text-teal-700">{index + 1}. {title}</p><p className="mt-2 text-xs leading-5 text-slate-600">{detail}</p></li>)}</ol></section><section className="grid gap-4 lg:grid-cols-[1.2fr_.8fr]"><article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-teal-700">{text.modelStatus}</p><h2 className="mt-2 text-xl font-semibold">{text.modelTitle}</h2><p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">{text.modelDetail}</p><p className="mt-4 rounded-xl bg-teal-50 p-3 text-xs font-medium text-teal-950"><span className="block text-teal-700">{text.evidenceLabel}</span>{text.evidenceDetail}</p><Link href="/performance" className="mt-4 inline-flex items-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-teal-300 hover:bg-teal-50">{text.evidence} <ChartNoAxesCombined className="size-4" /></Link></article><article className="rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-sm"><h2 className="text-xl font-semibold text-amber-950">{text.cannotTitle}</h2><ul className="mt-4 space-y-3 text-sm leading-6 text-amber-900">{text.cannot.map(item => <li key={item} className="flex gap-2"><ShieldAlert className="mt-0.5 size-4 shrink-0" />{item}</li>)}</ul></article></section><section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-xl bg-slate-100 text-slate-700"><BrainCircuit className="size-5" /></span><div><h2 className="text-xl font-semibold">{text.responsibleTitle}</h2><p className="mt-2 max-w-4xl text-sm leading-6 text-slate-600">{text.responsibleDetail}</p></div></div></section></div>;
+
+  return (
+    <div className="mx-auto max-w-6xl space-y-6">
+      <section className="grid overflow-hidden rounded-3xl bg-slate-950 text-white shadow-lg lg:grid-cols-[1.15fr_1fr]">
+        <div className="bg-[radial-gradient(ellipse_at_bottom_left,_#134e4a,_transparent_72%)] p-6 sm:p-10">
+          <p className="text-sm font-medium text-teal-200">{text.eyebrow}</p>
+          <h1 className="mt-4 max-w-xl text-4xl font-semibold leading-[1.12] tracking-tight sm:text-5xl">
+            {text.title}
+          </h1>
+          <p className="mt-4 max-w-lg text-base leading-7 text-slate-300">
+            {text.intro}
+          </p>
+          <div className="mt-7 flex flex-wrap gap-3">
+            <Link
+              href="/analyse"
+              className="inline-flex items-center gap-2 rounded-xl bg-teal-300 px-4 py-3 text-sm font-semibold text-teal-950 hover:bg-teal-200 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
+            >
+              {text.begin} <ArrowRight className="size-4" aria-hidden="true" />
+            </Link>
+            <Link
+              href="/methodology"
+              className="inline-flex items-center rounded-xl border border-slate-500 px-4 py-3 text-sm font-semibold hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
+            >
+              {text.methodology}
+            </Link>
+          </div>
+        </div>
+        <div className="border-t border-slate-700 bg-slate-900 p-6 sm:p-8 lg:border-t-0 lg:border-l">
+          <h2 className="font-semibold text-teal-200">{text.journeyTitle}</h2>
+          <ol className="mt-4 list-decimal space-y-3 pl-5 marker:font-mono marker:text-teal-200">
+            {text.journey.map(([title, detail]) => (
+              <li
+                key={title}
+                className="border-b border-slate-700 pb-3 pl-2 last:border-b-0 last:pb-0"
+              >
+                <p className="text-sm font-semibold">{title}</p>
+                <p className="mt-1 text-sm leading-5 text-slate-300">
+                  {detail}
+                </p>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+      <AcademicDisclaimer />
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {text.features.map(([title, detail], index) => {
+          const Icon = featureIcons[index]!;
+          return (
+            <article
+              key={title}
+              className="rounded-2xl border border-slate-200 bg-white p-5"
+            >
+              <Icon className="size-5 text-teal-800" aria-hidden="true" />
+              <h2 className="mt-3 font-semibold">{title}</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">{detail}</p>
+            </article>
+          );
+        })}
+      </section>
+      <section className="grid gap-4 lg:grid-cols-[1.2fr_.8fr]">
+        <article className="rounded-2xl border border-slate-200 bg-white p-6">
+          <h2 className="text-lg font-semibold">{text.modelTitle}</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            {text.modelDetail}
+          </p>
+          <p className="mt-4 rounded-xl bg-teal-50 p-3 text-sm text-teal-950">
+            <strong className="block">{text.evidenceLabel}</strong>
+            {text.evidenceDetail}
+          </p>
+          <Link
+            href="/performance"
+            className="mt-4 inline-flex items-center gap-2 rounded-lg px-1 py-2 text-sm font-semibold text-teal-800 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
+          >
+            {text.evidence} <ArrowRight className="size-4" aria-hidden="true" />
+          </Link>
+        </article>
+        <article className="rounded-2xl border border-amber-200 bg-amber-50 p-6">
+          <h2 className="text-lg font-semibold text-amber-950">
+            {text.cannotTitle}
+          </h2>
+          <ul className="mt-3 space-y-2 text-sm leading-6 text-amber-950">
+            {text.cannot.map(item => (
+              <li key={item} className="flex gap-2">
+                <ShieldAlert
+                  className="mt-1 size-4 shrink-0"
+                  aria-hidden="true"
+                />
+                {item}
+              </li>
+            ))}
+          </ul>
+        </article>
+      </section>
+    </div>
+  );
 }

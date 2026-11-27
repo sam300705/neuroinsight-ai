@@ -147,3 +147,8 @@ temp/
 # Manus version file (auto-generated, not part of source)
 client/public/__manus__/version.json
 .project-config.json
+
+# Private v3.2 handoff archives and extracted handoff root
+NeuroInsight_AI_Handoff/
+*NeuroInsight_AI_Handoff*.zip
+*NeuroInsight_AI_Handoff*.zip.part[123]

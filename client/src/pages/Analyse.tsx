@@ -1,12 +1,291 @@
-import { ArrowRight, CheckCircle2, FileWarning, LoaderCircle, LockKeyhole, ScanSearch } from "lucide-react";
-import { useState } from "react";
+import {
+  ArrowRight,
+  CheckCircle2,
+  FileWarning,
+  LoaderCircle,
+  LockKeyhole,
+  ScanSearch,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { UploadDropzone, type LocalFileCheck } from "@/components/UploadDropzone";
+import {
+  UploadDropzone,
+  type LocalFileCheck,
+} from "@/components/UploadDropzone";
 import { AcademicDisclaimer } from "@/components/ResearchDisclaimers";
-import { useAnalysis } from "@/contexts/AnalysisContext";
-import { validateWithInferenceService } from "@/lib/inferenceApi";
-import { sha256File } from "@/lib/researchPassport";
+import {
+  useAnalysis,
+  type ClientAnalysisState,
+} from "@/contexts/AnalysisContext";
 import { copyFor } from "@/contexts/pageCopy";
 import { useLanguage } from "@/contexts/LanguageContext";
+import {
+  validateWithInferenceService,
+  type InferenceAnalysisResponse,
+} from "@/lib/inferenceApi";
+import { sha256File } from "@/lib/researchPassport";
 
-export default function Analyse() { const { language } = useLanguage(); const text = copyFor(language).analyse; const [acknowledged, setAcknowledged] = useState(false); const [selection, setSelection] = useState<{ file: File; check: LocalFileCheck } | null>(null); const [processing, setProcessing] = useState(false); const [serviceError, setServiceError] = useState<string | null>(null); const { setCurrent } = useAnalysis(); const [, navigate] = useLocation(); const startAnalysis = async () => { if (!acknowledged || !selection?.check.valid) return; setProcessing(true); setServiceError(null); const requestId = crypto.randomUUID(); const [result, inputSha256] = await Promise.all([validateWithInferenceService(selection.file, "classification", requestId), sha256File(selection.file)]); setProcessing(false); if (!result.ok) { setServiceError(result.message); return; } const server = result.response; setCurrent({ scanId: server.scan_id, mode: server.mode, fileName: selection.file.name, fileSize: selection.file.size, sourceFile: selection.file, inputSha256, previewUrl: selection.check.previewUrl, status: server.status === "complete" ? "ready" : server.status === "low_confidence" ? "low_confidence" : server.status === "incompatible" ? "incompatible" : "unavailable", modelVersion: server.model_version, predictedClass: server.predicted_class, modelConfidenceScore: server.model_confidence_score, calibrated: server.calibrated, uncertaintyReason: server.uncertainty_reason, gradCamDataUrl: server.grad_cam_png_base64 ? `data:image/png;base64,${server.grad_cam_png_base64}` : null, serverResponse: server, messages: [text.validationPassed, ...selection.check.warnings, ...server.warnings, ...server.limitations, server.uncertainty_reason ?? "", server.manual_review_recommended ? text.review : ""].filter(Boolean), createdAt: new Date().toISOString() }); navigate("/results"); }; return <div className="mx-auto max-w-5xl space-y-6"><div><h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{text.title}</h1><p className="mt-3 max-w-3xl text-base leading-7 text-slate-600">{text.intro}</p></div><AcademicDisclaimer /><div aria-label={text.modeLabel}><section className="rounded-2xl border border-teal-700 bg-teal-800 p-5 text-white shadow-md"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-teal-100">{text.classSubtitle}</p><h2 className="mt-2 text-lg font-semibold">{text.classification}</h2><p className="mt-2 text-sm leading-6 text-teal-50">{text.classScope}</p></section></div><label className="flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-950"><input type="checkbox" checked={acknowledged} onChange={event => { setAcknowledged(event.target.checked); setSelection(null); setServiceError(null); }} className="mt-1 size-4 shrink-0 accent-teal-800" /><span>{text.dataUseLabel}</span></label>{acknowledged ? <UploadDropzone mode="classification" onSelect={(file, check) => { setSelection({ file, check }); setServiceError(null); }} /> : <section className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-600"><LockKeyhole className="mb-3 size-5 text-slate-500" aria-hidden="true" /><p>{text.unlockUpload}</p></section>}{selection && <section className={`rounded-2xl border p-5 ${selection.check.valid ? "border-emerald-200 bg-emerald-50" : "border-rose-200 bg-rose-50"}`} aria-live="polite"><div className="flex gap-3"><span className={`mt-0.5 ${selection.check.valid ? "text-emerald-700" : "text-rose-700"}`}>{selection.check.valid ? <CheckCircle2 className="size-5" /> : <FileWarning className="size-5" />}</span><div><h2 className="font-semibold">{selection.file.name}</h2><p className="mt-1 text-sm text-slate-600">{(selection.file.size / 1024 / 1024).toFixed(2)} MB · {text.classification}</p>{selection.check.messages.length ? <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-rose-800">{selection.check.messages.map(message => <li key={message}>{message}</li>)}</ul> : <p className="mt-3 text-sm text-emerald-800">{text.preliminary}</p>}{selection.check.warnings.length > 0 && <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-amber-800">{selection.check.warnings.map(warning => <li key={warning}>{warning}</li>)}</ul>}</div></div></section>}{serviceError && <section className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-rose-900" role="alert" aria-live="assertive"><div className="flex gap-3"><FileWarning className="mt-0.5 size-5 shrink-0" /><div><h2 className="font-semibold">{text.validationFailed}</h2><p className="mt-1 text-sm leading-6">{serviceError}</p></div></div></section>}<div className="flex justify-end"><button type="button" onClick={startAnalysis} disabled={!acknowledged || !selection?.check.valid || processing} className="inline-flex items-center gap-2 rounded-xl bg-teal-800 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 disabled:cursor-not-allowed disabled:bg-slate-300">{processing ? <><LoaderCircle className="size-4 animate-spin" />{text.validating}</> : <><ScanSearch className="size-4" />{text.proceed} <ArrowRight className="size-4" /></>}</button></div></div>; }
+const analysisStatus = {
+  complete: "ready",
+  low_confidence: "low_confidence",
+  incompatible: "incompatible",
+  unavailable: "unavailable",
+  partial: "unavailable",
+} as const satisfies Record<
+  InferenceAnalysisResponse["status"],
+  ClientAnalysisState["status"]
+>;
+
+export default function Analyse() {
+  const { language } = useLanguage();
+  const text = copyFor(language).analyse;
+  const hindi = language === "hi";
+  const [acknowledged, setAcknowledged] = useState(false);
+  const [selection, setSelection] = useState<{
+    file: File;
+    check: LocalFileCheck;
+  } | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [serviceError, setServiceError] = useState<string | null>(null);
+  const activeRequest = useRef<string | null>(null);
+  const { setCurrent } = useAnalysis();
+  const [, navigate] = useLocation();
+
+  useEffect(
+    () => () => {
+      activeRequest.current = null;
+    },
+    []
+  );
+
+  async function startAnalysis() {
+    if (
+      !acknowledged ||
+      !selection?.check.valid ||
+      checking ||
+      activeRequest.current
+    )
+      return;
+    const { file, check } = selection;
+    const requestId = crypto.randomUUID();
+    activeRequest.current = requestId;
+    setProcessing(true);
+    setServiceError(null);
+
+    try {
+      const [result, inputSha256] = await Promise.all([
+        validateWithInferenceService(file, "classification", requestId),
+        sha256File(file),
+      ]);
+      if (activeRequest.current !== requestId) return;
+      if (!result.ok) {
+        setServiceError(result.message);
+        return;
+      }
+
+      const server = result.response;
+      setCurrent({
+        scanId: server.scan_id,
+        mode: server.mode,
+        fileName: file.name,
+        fileSize: file.size,
+        sourceFile: file,
+        inputSha256,
+        previewUrl: check.previewUrl ? URL.createObjectURL(file) : undefined,
+        status: analysisStatus[server.status],
+        modelVersion: server.model_version,
+        predictedClass: server.predicted_class,
+        modelConfidenceScore: server.model_confidence_score,
+        calibrated: server.calibrated,
+        uncertaintyReason: server.uncertainty_reason,
+        gradCamDataUrl: server.grad_cam_png_base64
+          ? `data:image/png;base64,${server.grad_cam_png_base64}`
+          : null,
+        serverResponse: server,
+        messages: [
+          text.validationPassed,
+          ...check.warnings,
+          ...server.warnings,
+          ...server.limitations,
+          server.uncertainty_reason ?? "",
+          server.manual_review_recommended ? text.review : "",
+        ].filter(Boolean),
+        createdAt: new Date().toISOString(),
+      });
+      navigate("/results");
+    } catch {
+      if (activeRequest.current === requestId) {
+        setServiceError(
+          hindi
+            ? "विश्लेषण पूरा नहीं हुआ। फिर से प्रयास करें।"
+            : "The analysis could not be completed. Try again."
+        );
+      }
+    } finally {
+      if (activeRequest.current === requestId) {
+        activeRequest.current = null;
+        setProcessing(false);
+      }
+    }
+  }
+
+  return (
+    <div className="mx-auto max-w-6xl space-y-6">
+      <header className="rounded-3xl bg-slate-950 p-6 text-white shadow-lg sm:p-8">
+        <p className="text-sm font-medium text-teal-200">
+          {text.classification}
+        </p>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
+          {text.title}
+        </h1>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
+          {text.classScope}
+        </p>
+      </header>
+      <AcademicDisclaimer />
+
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+        <section className="rounded-2xl border border-slate-200 bg-white p-5">
+          <h2 className="font-semibold">
+            {hindi ? "डेटा उपयोग की पुष्टि" : "Confirm data use"}
+          </h2>
+          <label className="mt-3 flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
+            <input
+              type="checkbox"
+              checked={acknowledged}
+              disabled={processing || checking}
+              onChange={event => {
+                setAcknowledged(event.target.checked);
+                setSelection(null);
+                setServiceError(null);
+              }}
+              className="mt-1 size-4 shrink-0 accent-teal-800"
+            />
+            <span>{text.dataUseLabel}</span>
+          </label>
+        </section>
+
+        <section className="min-w-0 space-y-4 rounded-2xl border border-slate-200 bg-white p-5">
+          <h2 className="font-semibold">
+            {hindi ? "शोध छवि" : "Research image"}
+          </h2>
+          {acknowledged ? (
+            <UploadDropzone
+              mode="classification"
+              disabled={processing}
+              onCheckingChange={value => {
+                setChecking(value);
+                if (value) {
+                  setSelection(null);
+                  setServiceError(null);
+                }
+              }}
+              onSelect={(file, check) => setSelection({ file, check })}
+            />
+          ) : (
+            <div className="grid min-h-36 place-content-center gap-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-center text-sm text-slate-600">
+              <LockKeyhole className="mx-auto size-5" aria-hidden="true" />
+              <p>{text.unlockUpload}</p>
+            </div>
+          )}
+
+          <div aria-live="polite">
+            {selection && (
+              <div
+                className={`flex items-start gap-3 rounded-2xl border p-4 ${selection.check.valid ? "border-teal-200 bg-teal-50" : "border-rose-200 bg-rose-50"}`}
+              >
+                {selection.check.previewUrl ? (
+                  <img
+                    src={selection.check.previewUrl}
+                    alt={copyFor(language).results.preview}
+                    className="size-16 shrink-0 rounded-lg bg-slate-950 object-contain sm:size-20"
+                  />
+                ) : selection.check.valid ? (
+                  <CheckCircle2
+                    className="size-5 shrink-0 text-teal-800"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <FileWarning
+                    className="size-5 shrink-0 text-rose-800"
+                    aria-hidden="true"
+                  />
+                )}
+                <div className="min-w-0">
+                  <h3 className="break-all font-semibold">
+                    {selection.file.name}
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-600">
+                    {(selection.file.size / 1024 / 1024).toFixed(2)} MB
+                  </p>
+                  {selection.check.messages.length > 0 ? (
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-rose-900">
+                      {selection.check.messages.map(message => (
+                        <li key={message}>{message}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-2 text-sm text-teal-900">
+                      {text.preliminary}
+                    </p>
+                  )}
+                  {selection.check.warnings.length > 0 && (
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-amber-900">
+                      {selection.check.warnings.map(warning => (
+                        <li key={warning}>{warning}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {serviceError && (
+            <div
+              className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-rose-900"
+              role="alert"
+            >
+              <h3 className="font-semibold">{text.validationFailed}</h3>
+              <p className="mt-1 text-sm leading-6">{serviceError}</p>
+            </div>
+          )}
+
+          <div
+            className="flex justify-end border-t border-slate-100 pt-4"
+            aria-live="polite"
+          >
+            <button
+              type="button"
+              onClick={startAnalysis}
+              disabled={
+                !acknowledged ||
+                !selection?.check.valid ||
+                checking ||
+                processing
+              }
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-teal-800 px-5 py-3 text-sm font-semibold text-white hover:bg-teal-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 disabled:cursor-not-allowed disabled:bg-slate-600 max-sm:w-full"
+            >
+              {processing ? (
+                <>
+                  <LoaderCircle
+                    className="size-4 motion-safe:animate-spin"
+                    aria-hidden="true"
+                  />
+                  {text.validating}
+                </>
+              ) : (
+                <>
+                  <ScanSearch className="size-4" aria-hidden="true" />
+                  {text.proceed}
+                  <ArrowRight className="size-4" aria-hidden="true" />
+                </>
+              )}
+            </button>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}

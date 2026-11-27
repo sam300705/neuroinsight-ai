@@ -35,6 +35,8 @@ export function V32Result({ analysis, previewUrl }: Props) {
   const [showOutline, setShowOutline] = useState(true);
   const hindi = language === "hi";
   const text = hindi ? {
+    slice: "MRI स्लाइस की समीक्षा",
+    unavailableValue: "उपलब्ध नहीं",
     original: "मूल MRI स्लाइस",
     outline: "अनुमानित 2D रूपरेखा",
     classifier: "वर्गीकारक का निर्णय",
@@ -53,6 +55,8 @@ export function V32Result({ analysis, previewUrl }: Props) {
     noOutline: "वर्गीकारक ने ट्यूमर बताया, लेकिन कोई रूपरेखा नहीं मिली।",
     lowConfidence: "वर्गीकारक का कॉन्फिडेंस कम है।",
   } : {
+    slice: "MRI slice review",
+    unavailableValue: "Unavailable",
     original: "Original MRI slice",
     outline: "Predicted 2D outline",
     classifier: "Classifier decision",
@@ -75,6 +79,10 @@ export function V32Result({ analysis, previewUrl }: Props) {
   const showingOverlay = showOutline && Boolean(overlay);
   const displayedSlice = showingOverlay ? overlay : previewUrl;
 
+  function percent(value: number | null) {
+    return value === null ? text.unavailableValue : `${value.toFixed(2)}%`;
+  }
+
   function reviewReason(reason: string) {
     if (reason.startsWith("low classifier confidence")) return text.lowConfidence;
     if (reason.startsWith("classifier: no_tumor")) return text.disagreement;
@@ -85,13 +93,25 @@ export function V32Result({ analysis, previewUrl }: Props) {
   return <>
     <section className="grid gap-5 lg:grid-cols-2">
       <div className="rounded-2xl border bg-white p-6 shadow-sm">
-        {overlay && <button type="button" aria-pressed={showingOverlay}
-          onClick={() => setShowOutline(value => !value)}
-          className="mb-4 rounded-lg border border-teal-700 px-3 py-2 text-sm font-semibold text-teal-900">
-          {text.outline}
-        </button>}
-        {displayedSlice && <img src={displayedSlice} alt={showingOverlay ? text.outline : text.original}
-          className="max-h-96 w-full rounded-xl bg-slate-950 object-contain" />}
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold">{text.slice}</h2>
+          {overlay && previewUrl && (
+            <button type="button" aria-pressed={showingOverlay}
+              onClick={() => setShowOutline(value => !value)}
+              className="rounded-lg border border-teal-700 px-3 py-2 text-sm font-semibold text-teal-900 hover:bg-teal-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 aria-pressed:bg-teal-100">
+              {text.outline}
+            </button>
+          )}
+        </div>
+        {displayedSlice ? (
+          <figure>
+            <img src={displayedSlice} alt={showingOverlay ? text.outline : text.original}
+              className="max-h-96 w-full rounded-xl bg-slate-950 object-contain" />
+            <figcaption className="mt-2 text-sm text-slate-600">
+              {showingOverlay ? text.outline : text.original}
+            </figcaption>
+          </figure>
+        ) : <p className="text-sm text-slate-600">{text.unavailableValue}</p>}
       </div>
       <div className="space-y-3 rounded-2xl border bg-white p-6 shadow-sm">
         <p className="text-sm font-semibold text-teal-800">{analysis.model_version}</p>
@@ -101,8 +121,8 @@ export function V32Result({ analysis, previewUrl }: Props) {
           <div><dt className="font-semibold">{text.confidence}</dt><dd>{`${(finding.confidence * 100).toFixed(1)}%`}. {text.confidenceNote}</dd></div>
           {finding.tumor_area_px !== null && <>
             <div><dt className="font-semibold">{text.pixels}</dt><dd>{finding.tumor_area_px}</dd></div>
-            <div><dt className="font-semibold">{text.image}</dt><dd>{finding.tumor_pct_of_image?.toFixed(2)}%</dd></div>
-            <div><dt className="font-semibold">{text.brain}</dt><dd>{finding.tumor_pct_of_brain?.toFixed(2)}%</dd></div>
+            <div><dt className="font-semibold">{text.image}</dt><dd>{percent(finding.tumor_pct_of_image)}</dd></div>
+            <div><dt className="font-semibold">{text.brain}</dt><dd>{percent(finding.tumor_pct_of_brain)}</dd></div>
           </>}
         </dl>
         {finding.tumor_area_px === null && <p>{text.unavailable}</p>}
