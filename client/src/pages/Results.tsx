@@ -142,7 +142,7 @@ export default function Results() {
   );
   return (
     <div className="space-y-5">
-      <header className="workspace-heading">
+      <header className="workspace-heading workspace-enter">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <p className="text-sm font-medium text-[var(--workspace-accent)]">
@@ -279,7 +279,7 @@ export default function Results() {
         <summary className="cursor-pointer rounded text-sm font-semibold focus-visible:outline-2 focus-visible:outline-[var(--workspace-accent)]">
           {hindi ? "परिणाम के बारे में पूछें" : "Ask about the result"}
         </summary>
-        <div className="mt-4">
+        <div className="workspace-disclosure mt-4">
           <ChatPanel />
         </div>
       </details>

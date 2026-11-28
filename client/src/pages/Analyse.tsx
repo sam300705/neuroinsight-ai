@@ -131,7 +131,7 @@ export default function Analyse() {
 
   return (
     <div className="space-y-6">
-      <header className="workspace-heading">
+      <header className="workspace-heading workspace-enter">
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
           {text.title}
         </h1>
@@ -142,7 +142,7 @@ export default function Analyse() {
         </p>
       </header>
 
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+      <div className="workspace-enter workspace-enter-next grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
         <section className="workspace-panel p-5">
           <h2 className="font-semibold">
             {hindi ? "डेटा उपयोग की पुष्टि" : "Confirm data use"}
@@ -190,7 +190,7 @@ export default function Analyse() {
           <div aria-live="polite">
             {selection && (
               <div
-                className={`flex items-start gap-3 rounded-2xl border p-4 ${selection.check.valid ? "border-blue-200 bg-[var(--workspace-soft)]" : "border-rose-200 bg-rose-50"}`}
+                className={`workspace-reveal flex items-start gap-3 rounded-2xl border p-4 ${selection.check.valid ? "border-blue-200 bg-[var(--workspace-soft)]" : "border-rose-200 bg-rose-50"}`}
               >
                 {selection.check.previewUrl ? (
                   <img
@@ -249,6 +249,9 @@ export default function Analyse() {
             </div>
           )}
 
+          {processing && (
+            <div className="workspace-activity" aria-hidden="true" />
+          )}
           <div
             className="flex justify-end border-t border-slate-100 pt-4"
             aria-live="polite"

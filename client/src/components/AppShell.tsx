@@ -1,5 +1,5 @@
 import { BrainCircuit, Languages, Menu, ShieldCheck, X } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAnalysis } from "@/contexts/AnalysisContext";
@@ -15,6 +15,7 @@ const referenceLinks = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [open, setOpen] = useState(false);
+  const menuToggle = useRef<HTMLButtonElement>(null);
   const { current } = useAnalysis();
   const { language, setLanguage, t } = useLanguage();
   const nav = [
@@ -34,7 +35,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         {t("skip")}
       </a>
-      <header className="sticky top-0 z-40 pt-3 lg:pt-7">
+      <header
+        className="sticky top-0 z-40 pt-3 lg:pt-7"
+        onKeyDown={event => {
+          if (event.key === "Escape" && open) {
+            setOpen(false);
+            menuToggle.current?.focus();
+          }
+        }}
+      >
         <div className="workspace-wrap workspace-glass relative flex min-h-14 items-center justify-between gap-3 px-3 sm:px-6 lg:px-9">
           <Link
             href="/"
@@ -53,7 +62,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <nav
             id="workspace-nav"
             aria-label={t("navigation")}
-            className={`${open ? "flex" : "hidden"} absolute inset-x-0 top-full flex-col gap-1 border-b border-slate-200 bg-white p-4 shadow-sm md:static md:flex md:flex-row md:items-center md:border-0 md:bg-transparent md:p-0 md:shadow-none`}
+            className={`${open ? "workspace-mobile-menu flex" : "hidden"} absolute inset-x-0 top-full flex-col gap-1 border-b border-slate-200 bg-white p-4 shadow-sm md:static md:flex md:flex-row md:items-center md:border-0 md:bg-transparent md:p-0 md:shadow-none`}
           >
             {nav.map(item => (
               <Link
@@ -82,7 +91,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </button>
             <button
               type="button"
-              onClick={() => setOpen(!open)}
+              ref={menuToggle}
+              onClick={() => setOpen(value => !value)}
               aria-expanded={open}
               aria-controls="workspace-nav"
               aria-label={t("toggleNavigation")}

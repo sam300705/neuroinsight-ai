@@ -30,7 +30,7 @@ export default function Home() {
   return (
     <div className="space-y-8">
       <section className="workspace-overview">
-        <div className="min-w-0">
+        <div className="workspace-enter min-w-0">
           <h1 className="workspace-display">
             {hindi ? "मस्तिष्क MRI का विश्लेषण" : "Brain MRI analysis"}
           </h1>
@@ -42,7 +42,7 @@ export default function Home() {
           <div className="mt-5 flex flex-wrap items-center gap-3">
             <Link
               href="/analyse"
-              className="workspace-action workspace-action-primary"
+              className="workspace-action workspace-action-primary workspace-action-forward"
             >
               {t("analyze")}{" "}
               <ArrowRight className="size-4" aria-hidden="true" />
@@ -55,7 +55,7 @@ export default function Home() {
             </Link>
           </div>
         </div>
-        <figure className="workspace-viewer">
+        <figure className="workspace-viewer workspace-enter workspace-enter-next">
           <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
             <span className="text-sm font-semibold">
               {hindi ? "अक्षीय MRI स्लाइस" : "Axial MRI slice"}
@@ -79,7 +79,10 @@ export default function Home() {
           </figcaption>
         </figure>
       </section>
-      <section aria-labelledby="analysis-outputs">
+      <section
+        aria-labelledby="analysis-outputs"
+        className="workspace-enter workspace-enter-last"
+      >
         <h2
           id="analysis-outputs"
           className="mb-2 text-2xl font-semibold tracking-tight"

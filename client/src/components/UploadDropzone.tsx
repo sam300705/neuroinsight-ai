@@ -115,7 +115,7 @@ export function UploadDropzone({
         setDragging(false);
         void select(event.dataTransfer.files[0]);
       }}
-      className={`rounded-2xl border-2 border-dashed p-6 text-center transition sm:p-8 ${dragging ? "border-[var(--workspace-accent)] bg-[var(--workspace-soft)]" : "border-slate-300 bg-slate-50"}`}
+      className={`rounded-2xl border-2 border-dashed p-6 text-center transition-colors sm:p-8 ${dragging ? "border-[var(--workspace-accent)] bg-[var(--workspace-soft)]" : "border-slate-300 bg-slate-50"}`}
       aria-busy={checking}
     >
       <input
