@@ -1,5 +1,5 @@
 import { BrainCircuit, Languages, Menu, ShieldCheck, X } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAnalysis } from "@/contexts/AnalysisContext";
@@ -15,6 +15,7 @@ const referenceLinks = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [open, setOpen] = useState(false);
+  const menuToggle = useRef<HTMLButtonElement>(null);
   const { current } = useAnalysis();
   const { language, setLanguage, t } = useLanguage();
   const nav = [
@@ -27,32 +28,41 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   ] as const;
 
   return (
-    <div className="min-h-screen bg-[#f3f6fc] text-slate-950">
+    <div className="workspace-shell">
       <a
         href="#main-content"
-        className="sr-only z-50 rounded-b-lg bg-blue-800 px-4 py-3 font-semibold text-white focus:not-sr-only focus:fixed focus:left-4 focus:top-0"
+        className="sr-only z-50 rounded-b-lg bg-[var(--workspace-accent)] px-4 py-3 font-semibold text-white focus:not-sr-only focus:fixed focus:left-4 focus:top-0"
       >
         {t("skip")}
       </a>
-      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur-xl">
-        <div className="mx-auto flex min-h-17 max-w-7xl items-center justify-between gap-3 px-4 sm:px-8">
+      <header
+        className="sticky top-0 z-40 pt-3 lg:pt-7"
+        onKeyDown={event => {
+          if (event.key === "Escape" && open) {
+            setOpen(false);
+            menuToggle.current?.focus();
+          }
+        }}
+      >
+        <div className="workspace-wrap workspace-glass relative flex min-h-14 items-center justify-between gap-3 px-3 sm:px-6 lg:px-9">
           <Link
             href="/"
             aria-label="NeuroInsight AI"
-            className="flex shrink-0 items-center gap-2.5 rounded-lg font-semibold tracking-tight focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700"
+            className="flex shrink-0 items-center gap-2.5 rounded-lg font-semibold tracking-tight focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--workspace-accent)]"
             onClick={() => setOpen(false)}
           >
-            <span className="grid size-9 place-items-center rounded-xl bg-[#142653] text-sky-200">
+            <span className="grid size-9 place-items-center rounded-xl bg-[var(--workspace-accent)] text-[var(--viewer-ink)]">
               <BrainCircuit className="size-5" aria-hidden="true" />
             </span>
             <span>
-              NeuroInsight <span className="text-blue-700">AI</span>
+              NeuroInsight{" "}
+              <span className="text-[var(--workspace-accent)]">AI</span>
             </span>
           </Link>
           <nav
             id="workspace-nav"
             aria-label={t("navigation")}
-            className={`${open ? "flex" : "hidden"} absolute inset-x-0 top-full flex-col gap-1 border-b border-slate-200 bg-white p-4 shadow-sm md:static md:flex md:flex-row md:items-center md:border-0 md:bg-transparent md:p-0 md:shadow-none`}
+            className={`${open ? "workspace-mobile-menu flex" : "hidden"} absolute inset-x-0 top-full flex-col gap-1 border-b border-slate-200 bg-white p-4 shadow-sm md:static md:flex md:flex-row md:items-center md:border-0 md:bg-transparent md:p-0 md:shadow-none`}
           >
             {nav.map(item => (
               <Link
@@ -60,7 +70,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 href={item.href}
                 onClick={() => setOpen(false)}
                 aria-current={location === item.href ? "page" : undefined}
-                className={`rounded-xl px-3 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-blue-700 ${location === item.href ? "bg-blue-50 text-blue-800" : "text-slate-600 hover:bg-slate-100"}`}
+                className="workspace-nav-link rounded-lg px-3 py-2 text-sm font-semibold text-[var(--workspace-muted)] hover:bg-[var(--workspace-soft)]"
               >
                 {t(item.key)}
               </Link>
@@ -71,7 +81,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               type="button"
               onClick={() => setLanguage(language === "en" ? "hi" : "en")}
               aria-label={t("switchLanguage")}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-blue-50 focus-visible:outline-2 focus-visible:outline-blue-700"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-[var(--workspace-soft)] focus-visible:outline-2 focus-visible:outline-[var(--workspace-accent)]"
             >
               <Languages
                 className="hidden size-4 sm:block"
@@ -81,11 +91,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </button>
             <button
               type="button"
-              onClick={() => setOpen(!open)}
+              ref={menuToggle}
+              onClick={() => setOpen(value => !value)}
               aria-expanded={open}
               aria-controls="workspace-nav"
               aria-label={t("toggleNavigation")}
-              className="grid size-9 shrink-0 place-items-center rounded-lg border border-slate-200 text-slate-700 focus-visible:outline-2 focus-visible:outline-blue-700 md:hidden"
+              className="grid size-9 shrink-0 place-items-center rounded-lg border border-slate-200 text-slate-700 focus-visible:outline-2 focus-visible:outline-[var(--workspace-accent)] md:hidden"
             >
               {open ? (
                 <X className="size-4" aria-hidden="true" />
@@ -99,15 +110,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <main
         id="main-content"
         tabIndex={-1}
-        className="mx-auto max-w-7xl px-4 py-6 focus:outline-none sm:px-8 sm:py-9"
+        className="workspace-wrap py-5 focus:outline-none lg:py-8"
       >
-        {children}
+        <div className="workspace-reference">{children}</div>
       </main>
-      <footer className="mx-auto max-w-7xl px-4 pb-8 sm:px-8">
+      <footer className="workspace-wrap pb-8">
         <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-4 border-t border-slate-200 pt-5">
           <p className="flex items-center gap-2 text-xs leading-5 text-slate-600">
             <ShieldCheck
-              className="size-4 shrink-0 text-blue-800"
+              className="size-4 shrink-0 text-[var(--workspace-accent)]"
               aria-hidden="true"
             />
             {t("academic")}
@@ -122,7 +133,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
-                className="rounded-sm text-xs font-semibold text-slate-600 hover:text-blue-800 hover:underline focus-visible:outline-2 focus-visible:outline-blue-700"
+                className="rounded-sm text-xs font-semibold text-slate-600 hover:text-[var(--workspace-accent)] hover:underline focus-visible:outline-2 focus-visible:outline-[var(--workspace-accent)]"
               >
                 {t(item.key)}
               </Link>

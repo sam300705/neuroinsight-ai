@@ -2,9 +2,32 @@ import { OAUTH_STATE_COOKIE, encodeOAuthState } from "@shared/const";
 
 export { COOKIE_NAME, SESSION_MAX_AGE_MS } from "@shared/const";
 
-export const loginConfigured = Boolean(
-  import.meta.env.VITE_OAUTH_PORTAL_URL && import.meta.env.VITE_APP_ID
-);
+function readLoginSettings() {
+  const portal = import.meta.env.VITE_OAUTH_PORTAL_URL?.trim();
+  const appId = import.meta.env.VITE_APP_ID?.trim();
+  if (!portal || !appId) return null;
+
+  try {
+    const url = new URL(portal);
+    const localDevelopment =
+      import.meta.env.DEV &&
+      ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+    if (
+      url.protocol !== "https:" &&
+      !(localDevelopment && url.protocol === "http:")
+    )
+      return null;
+    if (url.username || url.password || url.search || url.hash) return null;
+
+    url.pathname = `${url.pathname.replace(/\/+$/, "")}/app-auth`;
+    return { url: url.href, appId };
+  } catch {
+    return null;
+  }
+}
+
+const loginSettings = readLoginSettings();
+export const loginConfigured = loginSettings !== null;
 
 // Start the Manus OAuth login. Call this from an event handler or effect at the
 // moment you want to navigate, e.g. `onClick={() => startLogin()}`.
@@ -17,16 +40,15 @@ export const loginConfigured = Boolean(
 // with "invalid oauth state". It returns void by design, so there is no URL to
 // stash across renders.
 export const startLogin = () => {
-  const oauthPortalUrl = import.meta.env.VITE_OAUTH_PORTAL_URL;
-  const appId = import.meta.env.VITE_APP_ID;
+  if (!loginSettings) return;
   const redirectUri = `${window.location.origin}/api/oauth/callback`;
 
   const nonce = crypto.randomUUID();
   document.cookie = `${OAUTH_STATE_COOKIE}=${nonce}; Path=/; Max-Age=600; SameSite=None; Secure`;
   const state = encodeOAuthState({ redirectUri, nonce });
 
-  const url = new URL(`${oauthPortalUrl}/app-auth`);
-  url.searchParams.set("appId", appId);
+  const url = new URL(loginSettings.url);
+  url.searchParams.set("appId", loginSettings.appId);
   url.searchParams.set("redirectUri", redirectUri);
   url.searchParams.set("state", state);
   url.searchParams.set("type", "signIn");
