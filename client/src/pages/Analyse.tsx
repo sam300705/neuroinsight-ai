@@ -130,12 +130,12 @@ export default function Analyse() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <header className="workspace-hero rounded-3xl p-6 sm:p-9">
+    <div className="space-y-6">
+      <header className="workspace-heading">
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
           {text.title}
         </h1>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--workspace-muted)]">
           {hindi
             ? "शोध के लिए एक 2D PNG या JPEG स्लाइस चुनें।"
             : "Choose one PNG or JPEG slice for research analysis."}
@@ -157,7 +157,7 @@ export default function Analyse() {
                 setSelection(null);
                 setServiceError(null);
               }}
-              className="mt-1 size-4 shrink-0 accent-blue-800"
+              className="mt-1 size-4 shrink-0 accent-[var(--workspace-accent)]"
             />
             <span>{text.dataUseLabel}</span>
           </label>
@@ -190,7 +190,7 @@ export default function Analyse() {
           <div aria-live="polite">
             {selection && (
               <div
-                className={`flex items-start gap-3 rounded-2xl border p-4 ${selection.check.valid ? "border-blue-200 bg-blue-50" : "border-rose-200 bg-rose-50"}`}
+                className={`flex items-start gap-3 rounded-2xl border p-4 ${selection.check.valid ? "border-blue-200 bg-[var(--workspace-soft)]" : "border-rose-200 bg-rose-50"}`}
               >
                 {selection.check.previewUrl ? (
                   <img
@@ -200,7 +200,7 @@ export default function Analyse() {
                   />
                 ) : selection.check.valid ? (
                   <CheckCircle2
-                    className="size-5 shrink-0 text-blue-800"
+                    className="size-5 shrink-0 text-[var(--workspace-accent)]"
                     aria-hidden="true"
                   />
                 ) : (
@@ -223,7 +223,7 @@ export default function Analyse() {
                       ))}
                     </ul>
                   ) : (
-                    <p className="mt-2 text-sm text-blue-900">
+                    <p className="mt-2 text-sm text-[var(--workspace-accent)]">
                       {hindi ? "फ़ाइल तैयार है।" : "File ready for analysis."}
                     </p>
                   )}
@@ -262,7 +262,7 @@ export default function Analyse() {
                 checking ||
                 processing
               }
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-800 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 disabled:cursor-not-allowed disabled:bg-slate-600 max-sm:w-full"
+              className="workspace-action workspace-action-primary max-sm:w-full"
             >
               {processing ? (
                 <>

@@ -5,24 +5,140 @@
 :root { --background: oklch(0.985 0.004 180); --foreground: oklch(0.22 0.02 205); --card: oklch(1 0 0); --card-foreground: oklch(0.22 0.02 205); --popover: oklch(1 0 0); --popover-foreground: oklch(0.22 0.02 205); --primary: oklch(0.42 0.08 183); --primary-foreground: oklch(0.99 0 0); --secondary: oklch(0.95 0.012 180); --secondary-foreground: oklch(0.28 0.03 190); --muted: oklch(0.95 0.008 200); --muted-foreground: oklch(0.47 0.025 210); --accent: oklch(0.93 0.028 180); --accent-foreground: oklch(0.25 0.04 185); --destructive: oklch(0.57 0.19 25); --border: oklch(0.89 0.012 200); --input: oklch(0.89 0.012 200); --ring: oklch(0.49 0.09 183); --radius: 0.75rem; }
 * { border-color: var(--border); } html { scroll-behavior: smooth; } body { margin: 0; min-width: 320px; background: var(--background); color: var(--foreground); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; } button, input { font: inherit; } button:not(:disabled) { cursor: pointer; } button:not(:disabled):active { transform: scale(0.98); } @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; } }
 
-
-.workspace-hero {
-  background: radial-gradient(ellipse at 70% 9%, #273d72 0, transparent 58%), linear-gradient(125deg, #101c3b 0%, #0d162b 75%);
-  color: #f8fbff;
-  box-shadow: 0 20px 50px -32px #182e66;
+:root {
+  --workspace-canvas: #f3f4ef;
+  --workspace-paper: #fff;
+  --workspace-ink: #14251f;
+  --workspace-muted: #4d6058;
+  --workspace-line: #d3ddd5;
+  --workspace-accent: #14544a;
+  --workspace-soft: #e2efe8;
+  --workspace-viewer: #101c1a;
+  --viewer-ink: #effaf3;
+  --viewer-muted: #bdcfc5;
+  --workspace-radius: 18px;
+  --workspace-panel-padding: 24px;
+  --workspace-edge: clamp(16px, 5.56vw, 80px);
 }
-.workspace-hero-action {
-  background: #9ddffa;
-  color: #0e2346;
+.workspace-shell {
+  min-height: 100vh;
+  background: var(--workspace-canvas);
+  color: var(--workspace-ink);
 }
-.workspace-hero-action:hover { background: #c5edfe; }
-.workspace-hero-action:focus-visible {
-  outline: 2px solid #fbfdff;
+.workspace-wrap {
+  width: min(calc(100% - var(--workspace-edge) * 2), 1280px);
+  margin-inline: auto;
+}
+.workspace-glass {
+  background: rgb(255 255 255 / 83%);
+  border: 1px solid var(--workspace-line);
+  border-radius: 14px;
+  backdrop-filter: blur(14px);
+}
+.workspace-nav-link[aria-current="page"] {
+  background: var(--workspace-soft);
+  color: var(--workspace-accent);
+}
+.workspace-shell :focus-visible {
+  outline: 2px solid var(--workspace-accent);
   outline-offset: 3px;
 }
+.workspace-viewer :focus-visible {
+  outline-color: var(--viewer-ink);
+}
+#main-content {
+  scroll-margin-top: 7rem;
+}
+#main-content:focus-visible {
+  outline: none;
+}
+.workspace-overview {
+  display: grid;
+  align-items: center;
+  gap: 22px;
+}
+.workspace-display {
+  font-size: clamp(2.25rem, 4.15vw, 3.5625rem);
+  line-height: 1.06;
+  letter-spacing: -.055em;
+  font-weight: 620;
+}
+.workspace-output-row {
+  display: grid;
+  grid-template-columns: minmax(0, 9rem) minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+  border-top: 1px solid var(--workspace-line);
+  padding-block: .625rem;
+}
+.workspace-action {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: .5rem;
+  border-radius: 10px;
+  padding: .65rem 1rem;
+  font-size: .875rem;
+  font-weight: 600;
+  transition: background-color 130ms ease;
+}
+.workspace-action-primary {
+  background: var(--workspace-accent);
+  color: var(--viewer-ink);
+}
+.workspace-action-primary:hover:enabled,
+a.workspace-action-primary:hover {
+  background: #103f37;
+}
+.workspace-action-primary:disabled {
+  background: var(--workspace-line);
+  color: var(--workspace-muted);
+  cursor: not-allowed;
+}
+.workspace-action-secondary {
+  background: var(--workspace-soft);
+  color: var(--workspace-accent);
+}
+.workspace-action-secondary:hover:enabled,
+a.workspace-action-secondary:hover {
+  background: #d5e8dc;
+}
 .workspace-panel {
-  border: 1px solid #dce5f2;
-  border-radius: 1.125rem;
-  background: #fff;
-  box-shadow: 0 9px 25px -24px #214581;
+  border: 1px solid var(--workspace-line);
+  border-radius: var(--workspace-radius);
+  background: var(--workspace-paper);
+}
+.workspace-viewer {
+  overflow: hidden;
+  border-radius: var(--workspace-radius);
+  background: var(--workspace-viewer);
+  color: var(--viewer-ink);
+}
+.workspace-heading h1 {
+  font-size: clamp(2rem, 3.6vw, 2.625rem);
+  line-height: 1.1;
+  letter-spacing: -.045em;
+  font-weight: 620;
+}
+.workspace-reference {
+  --background: var(--workspace-canvas);
+  --foreground: var(--workspace-ink);
+  --border: var(--workspace-line);
+  --ring: var(--workspace-accent);
+}
+@media (min-width: 1024px) {
+  .workspace-overview {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 36px;
+  }
+  .workspace-output-row {
+    grid-template-columns: minmax(0, 250px) minmax(0, 1fr);
+  }
+}
+@media (max-width: 359px) {
+  .workspace-output-row {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
 }

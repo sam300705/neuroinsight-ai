@@ -67,10 +67,10 @@ export default function History() {
   });
   const records = recordsQuery.data?.items ?? [];
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <header className="workspace-hero rounded-3xl p-6 sm:p-8">
+    <div className="space-y-6">
+      <header className="workspace-heading">
         <h1 className="text-3xl font-semibold tracking-tight">{text.title}</h1>
-        <p className="mt-2 text-sm leading-6 text-slate-300">
+        <p className="mt-2 text-sm leading-6 text-[var(--workspace-muted)]">
           {language === "hi"
             ? "सहेजे गए शोध परिणाम और रिपोर्ट।"
             : "Saved research results and reports."}
@@ -78,7 +78,7 @@ export default function History() {
       </header>
       {!loading && !isAuthenticated ? (
         <section className="workspace-panel p-8 text-center">
-          <LogIn className="mx-auto size-8 text-blue-800" />
+          <LogIn className="mx-auto size-8 text-[var(--workspace-accent)]" />
           {loginConfigured ? (
             <>
               <h2 className="mt-4 text-lg font-semibold">{text.signIn}</h2>
@@ -88,7 +88,7 @@ export default function History() {
               <button
                 type="button"
                 onClick={() => startLogin()}
-                className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-800 px-4 py-2.5 text-sm font-semibold text-white"
+                className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[var(--workspace-accent)] px-4 py-2.5 text-sm font-semibold text-white"
               >
                 <LogIn className="size-4" />
                 {text.signIn}
@@ -213,7 +213,7 @@ export default function History() {
           )}
           {recordsQuery.isLoading || loading ? (
             <div className="grid min-h-56 place-items-center">
-              <LoaderCircle className="size-7 animate-spin text-blue-700" />
+              <LoaderCircle className="size-7 animate-spin text-[var(--workspace-accent)]" />
             </div>
           ) : recordsQuery.error ? (
             <div className="mt-6 rounded-xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-900">
@@ -403,7 +403,7 @@ function ArtifactDownloadButton({
       type="button"
       onClick={download}
       disabled={artifact.isFetching}
-      className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-800 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+      className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-[var(--workspace-soft)] px-2 py-1 text-xs font-semibold text-[var(--workspace-accent)] hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
       aria-label={`Download ${artifactType} for scan ${scanId}`}
     >
       <Download className="size-3" />

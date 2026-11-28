@@ -107,8 +107,8 @@ export function V32Result({ analysis, previewUrl }: Props) {
 
   return (
     <>
-      <section className="grid items-start gap-4 lg:grid-cols-[1.3fr_1fr]">
-        <div className="overflow-hidden rounded-[1.125rem] border border-slate-700 bg-[#080e1b] text-slate-100">
+      <section className="grid items-start gap-4 lg:grid-cols-[1.32fr_1fr]">
+        <div className="workspace-viewer">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/15 px-4 py-3 sm:px-5">
             <h2 className="font-semibold">{text.slice}</h2>
             {overlay && previewUrl && (
@@ -116,7 +116,7 @@ export function V32Result({ analysis, previewUrl }: Props) {
                 type="button"
                 aria-pressed={showingOverlay}
                 onClick={() => setShowOutline(value => !value)}
-                className="rounded-lg border border-sky-200/40 px-3 py-2 text-sm font-semibold text-sky-100 hover:bg-sky-300/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-200 aria-pressed:bg-sky-300/20"
+                className="rounded-lg border border-white/25 px-3 py-2 text-sm font-semibold text-[var(--viewer-ink)] hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--viewer-ink)] aria-pressed:bg-white/15"
               >
                 {text.outline}
               </button>
@@ -129,7 +129,7 @@ export function V32Result({ analysis, previewUrl }: Props) {
                 alt={showingOverlay ? text.outline : text.original}
                 className="max-h-[29rem] min-h-52 w-full object-contain"
               />
-              <figcaption className="flex flex-wrap justify-between gap-2 border-t border-white/15 px-4 py-3 text-sm text-slate-300 sm:px-5">
+              <figcaption className="flex flex-wrap justify-between gap-2 border-t border-white/15 px-4 py-3 text-sm text-[var(--viewer-muted)] sm:px-5">
                 <span>{showingOverlay ? text.outline : text.original}</span>
                 <span className="tabular-nums">
                   {finding.image.width} × {finding.image.height} px
@@ -137,7 +137,7 @@ export function V32Result({ analysis, previewUrl }: Props) {
               </figcaption>
             </figure>
           ) : (
-            <p className="p-5 text-sm text-slate-300">
+            <p className="p-5 text-sm text-[var(--viewer-muted)]">
               {text.unavailableValue}
             </p>
           )}
@@ -153,9 +153,9 @@ export function V32Result({ analysis, previewUrl }: Props) {
                   : findingLabel(finding.class, language)}
               </dd>
             </div>
-            <div className="rounded-xl bg-blue-50 p-4">
+            <div className="rounded-xl bg-[var(--workspace-soft)] p-4">
               <dt className="text-sm text-slate-600">{text.confidence}</dt>
-              <dd className="mt-1 text-lg font-semibold tabular-nums text-blue-950">
+              <dd className="mt-1 text-lg font-semibold tabular-nums text-[var(--workspace-accent)]">
                 {(finding.confidence * 100).toFixed(1)}%
               </dd>
             </div>

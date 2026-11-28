@@ -45,13 +45,16 @@ export default function Results() {
   if (!current)
     return (
       <section className="workspace-panel mx-auto max-w-xl px-6 py-12 text-center">
-        <ImageOff className="mx-auto size-8 text-blue-700" aria-hidden="true" />
+        <ImageOff
+          className="mx-auto size-8 text-[var(--workspace-accent)]"
+          aria-hidden="true"
+        />
         <h1 className="mt-4 text-2xl font-semibold tracking-tight">
           {text.emptyTitle}
         </h1>
         <Link
           href="/analyse"
-          className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
+          className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[var(--workspace-accent)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#103f37] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--workspace-accent)]"
         >
           {text.analyse}
           <ArrowRight className="size-4" aria-hidden="true" />
@@ -138,11 +141,11 @@ export default function Results() {
       current.serverResponse?.manual_review_recommended
   );
   return (
-    <div className="mx-auto max-w-6xl space-y-5">
-      <header className="workspace-hero rounded-3xl p-6 sm:p-8">
+    <div className="space-y-5">
+      <header className="workspace-heading">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <p className="text-sm font-medium text-sky-200">
+            <p className="text-sm font-medium text-[var(--workspace-accent)]">
               {hindi ? "शोध परिणाम" : "Research result"}
             </p>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
@@ -225,7 +228,7 @@ export default function Results() {
               disabled={
                 persistenceState === "saving" || persistenceState === "saved"
               }
-              className="mt-3 inline-flex items-center gap-2 rounded-xl bg-blue-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 disabled:bg-slate-600"
+              className="mt-3 inline-flex items-center gap-2 rounded-xl bg-[var(--workspace-accent)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#103f37] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--workspace-accent)] disabled:bg-slate-600"
             >
               {persistenceState === "saving" ? (
                 <>
@@ -258,7 +261,7 @@ export default function Results() {
         )}
 
       <details className="workspace-panel p-5">
-        <summary className="cursor-pointer rounded text-sm font-semibold focus-visible:outline-2 focus-visible:outline-blue-700">
+        <summary className="cursor-pointer rounded text-sm font-semibold focus-visible:outline-2 focus-visible:outline-[var(--workspace-accent)]">
           {hindi ? "विश्लेषण विवरण" : "Analysis details"}
         </summary>
         <p className="mt-3 break-all text-sm text-slate-600">
@@ -273,7 +276,7 @@ export default function Results() {
         )}
       </details>
       <details className="workspace-panel p-5">
-        <summary className="cursor-pointer rounded text-sm font-semibold focus-visible:outline-2 focus-visible:outline-blue-700">
+        <summary className="cursor-pointer rounded text-sm font-semibold focus-visible:outline-2 focus-visible:outline-[var(--workspace-accent)]">
           {hindi ? "परिणाम के बारे में पूछें" : "Ask about the result"}
         </summary>
         <div className="mt-4">
